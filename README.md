@@ -9,7 +9,7 @@ cargo add batched
 Or add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-batched = "0.1.0"
+batched = "0.1.1"
 ```
 
 ## #[batched]
