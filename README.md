@@ -24,6 +24,7 @@ The target function return type must implement `Clone` to propgate the result. I
 
 ## Prerequisites 
 - Built for async environments (tokio), will not work without a tokio async runtime
+- Target function must have async and function name should end with `_batched`
 - Not supported inside structs
 ```rust
 struct A;
