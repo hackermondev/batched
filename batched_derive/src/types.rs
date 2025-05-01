@@ -11,6 +11,7 @@ use crate::utils::expr_to_u64;
 pub struct Function {
     pub identifier: String,
     pub visibility: TokenStream,
+    pub batched_arg: TokenStream,
     pub batched_arg_name: String,
     pub batched_arg_type: TokenStream,
     pub return_value: TokenStream,
@@ -31,6 +32,7 @@ impl Function {
             ReturnType::Type(_, _type) => _type.into_token_stream(),
         };
 
+        let mut batched_arg: Option<TokenStream> = None;
         let mut batched_arg_name: Option<String> = None;
         let mut batched_arg_type: Option<TokenStream> = None;
 
@@ -42,6 +44,7 @@ impl Function {
                     panic!("function may only contain a single argument")
                 }
 
+                batched_arg = Some(arg.to_token_stream());
                 batched_arg_name = match &*arg.pat {
                     Pat::Ident(pat_ident) => Some(pat_ident.ident.to_string()),
                     _ => panic!("unsupport argument name"),
@@ -68,12 +71,14 @@ impl Function {
             panic!("function must contain a single argument")
         }
 
+        let batched_arg = batched_arg.unwrap();
         let batched_arg_name = batched_arg_name.unwrap();
         let batched_arg_type = batched_arg_type.unwrap();
 
         Self {
             identifier,
             visibility,
+            batched_arg,
             batched_arg_name,
             batched_arg_type,
             return_value,

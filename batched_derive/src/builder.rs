@@ -10,6 +10,7 @@ static MAX_SEMAPHORE_PERMITS: usize = 2305843009213693951;
 pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     let name = call_function.identifier.replace("_batched", "");
     let visibility = call_function.visibility;
+    let arg = call_function.batched_arg;
     let arg_name = call_function.batched_arg_name;
     let arg_type = call_function.batched_arg_type;
     let returned = call_function.return_value;
@@ -104,20 +105,20 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
             sender
         }
 
-        async fn #batched(#arg_name: Vec<#arg_type>) -> #returned {
+        async fn #batched(#arg) -> #returned {
             #inner_body
         }
 
-        #visibility async fn #name(call: #arg_type) -> #returned_arc {
-            #fnname_multiple(vec![call]).await
+        #visibility async fn #name(#arg_name: #arg_type) -> #returned_arc {
+            #fnname_multiple(vec![#arg_name]).await
         }
 
-        #visibility async fn #fnname_multiple(calls: Vec<#arg_type>) -> #returned_arc {
+        #visibility async fn #fnname_multiple(#arg_name: Vec<#arg_type>) -> #returned_arc {
             let channel = &#batched_producer_channel;
             let channel = channel.get_or_init(async || { #__spawn_background_batch().await }).await;
 
             let (response_channel_sender, mut response_channel_recv) = tokio::sync::mpsc::channel(1);
-            channel.send((calls, response_channel_sender)).await
+            channel.send((#arg_name, response_channel_sender)).await
                 .expect("batched background thread is gone");
 
             let result = response_channel_recv.recv().await.expect("task panicked");
