@@ -1,0 +1,7 @@
+[package]
+name = "batched"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+batched_derive = { version = "0.1.0", path = "../batched_derive" }
