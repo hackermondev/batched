@@ -14,7 +14,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     let capacity = options.limit;
     let window = options.window;
 
-    let batched_producer_channel = format_ident!("batchED_{}_PRODUCER_CHANNEL", name.to_uppercase());
+    let batched_producer_channel = format_ident!("BATCHED_{}_PRODUCER_CHANNEL", name.to_uppercase());
     let __spawn_background_batch = format_ident!("__spawn_background_{name}_batched");
     let batched = format_ident!("__{name}_batched");
 

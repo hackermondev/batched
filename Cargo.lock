@@ -43,6 +43,7 @@ name = "batched"
 version = "0.1.0"
 dependencies = [
  "batched_derive",
+ "tokio",
 ]
 
 [[package]]
@@ -52,14 +53,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "batched_test"
-version = "0.1.0"
-dependencies = [
- "batched",
- "tokio",
 ]
 
 [[package]]

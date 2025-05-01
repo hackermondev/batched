@@ -43,7 +43,7 @@ impl Function {
 
                 batched_arg_name = match &*arg.pat {
                     Pat::Ident(pat_ident) => Some(pat_ident.ident.to_string()),
-                    _ => unimplemented!()
+                    _ => panic!("unsupport argument name")
                 };
 
                 if let syn::Type::Path(type_path) = &*arg.ty {

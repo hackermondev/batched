@@ -3,6 +3,5 @@ resolver = "2"
 rust-version = "1.78"
 members = [
     "batched",
-    "batched_derive",
-    "batched_test"
+    "batched_derive"
 ]
