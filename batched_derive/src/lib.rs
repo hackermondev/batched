@@ -16,6 +16,5 @@ pub fn batched(attributes: TokenStream, item: TokenStream) -> TokenStream {
     let result = build_code(function, attributes).into();
     #[cfg(test)]
     println!("{result}");
-
     result
 }

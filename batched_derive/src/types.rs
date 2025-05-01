@@ -87,6 +87,7 @@ pub struct Attributes {
     pub window: u64,
     pub limit: usize,
     pub concurrent_limit: Option<usize>,
+    pub wrap_in_arc: bool,
 }
 
 impl Attributes {
@@ -94,10 +95,12 @@ impl Attributes {
         let mut window: Option<u64> = None;
         let mut limit: Option<usize> = None;
         let mut concurrent_limit: Option<usize> = None;
+        let mut wrap_in_arc = false;
 
         static WINDOW_ATTR: &str = "window";
         static LIMIT_ATTR: &str = "limit";
         static CONCURRENT_LIMIT_ATTR: &str = "concurrent";
+        static WRAP_ARC_ATTR: &str = "boxed";
 
         let parser = Punctuated::<Meta, Token![,]>::parse_separated_nonempty;
         let attributes = parser.parse(tokens.into()).unwrap();
@@ -127,6 +130,8 @@ impl Attributes {
                 };
 
                 concurrent_limit = expr_to_u64(value).map(|u| u as usize);
+            } else if path.is_ident(WRAP_ARC_ATTR) {
+                wrap_in_arc = true;
             }
         }
 
@@ -136,6 +141,7 @@ impl Attributes {
             window,
             limit,
             concurrent_limit,
+            wrap_in_arc,
         }
     }
 }

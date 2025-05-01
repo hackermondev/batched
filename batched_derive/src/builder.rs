@@ -27,19 +27,29 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     let name = syn::parse_str::<TokenStream>(&name).unwrap();
     let arg_name = syn::parse_str::<TokenStream>(&arg_name).unwrap();
     let fnname_multiple = format_ident!("{name}_multiple");
+    let returned_arc = if options.wrap_in_arc {
+        syn::parse_str(&format!("::std::sync::Arc<{returned}>")).unwrap()
+    } else {
+        returned.clone()
+    };
+    let wrap_in_arc = if options.wrap_in_arc {
+        Some(syn::parse_str::<TokenStream>("let result = ::std::sync::Arc::new(result);").unwrap())
+    } else {
+        None
+    };
 
     quote! {
         static #batched_producer_channel:
-            ::tokio::sync::OnceCell<::tokio::sync::mpsc::Sender<(Vec<#arg_type>, ::tokio::sync::mpsc::Sender<#returned>)>> = ::tokio::sync::OnceCell::const_new();
+            ::tokio::sync::OnceCell<::tokio::sync::mpsc::Sender<(Vec<#arg_type>, ::tokio::sync::mpsc::Sender<#returned_arc>)>> = ::tokio::sync::OnceCell::const_new();
 
-        async fn #__spawn_background_batch() -> ::tokio::sync::mpsc::Sender<(Vec<#arg_type>, ::tokio::sync::mpsc::Sender<#returned>)> {
+        async fn #__spawn_background_batch() -> ::tokio::sync::mpsc::Sender<(Vec<#arg_type>, ::tokio::sync::mpsc::Sender<#returned_arc>)> {
             let capacity = #capacity;
             let window = tokio::time::Duration::from_millis(#window);
 
             let (sender, mut receiver) = tokio::sync::mpsc::channel(capacity);
             tokio::task::spawn(async move {
                 let mut buffer = Vec::with_capacity(capacity);
-                let mut channels: Vec<::tokio::sync::mpsc::Sender<#returned>> = vec![];
+                let mut channels: Vec<::tokio::sync::mpsc::Sender<#returned_arc>> = vec![];
                 let semaphore = ::std::sync::Arc::new(::tokio::sync::Semaphore::new(#concurrent_limit));
 
                 loop {
@@ -81,6 +91,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
                         let _permit = permit;
 
                         let result = #batched(calls).await;
+                        #wrap_in_arc
                         for channel in return_channels {
                             let _ = channel.try_send(result.clone());
                         }
@@ -97,11 +108,11 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
             #inner_body
         }
 
-        #visibility async fn #name(call: #arg_type) -> #returned {
+        #visibility async fn #name(call: #arg_type) -> #returned_arc {
             #fnname_multiple(vec![call]).await
         }
 
-        #visibility async fn #fnname_multiple(calls: Vec<#arg_type>) -> #returned {
+        #visibility async fn #fnname_multiple(calls: Vec<#arg_type>) -> #returned_arc {
             let channel = &#batched_producer_channel;
             let channel = channel.get_or_init(async || { #__spawn_background_batch().await }).await;
 

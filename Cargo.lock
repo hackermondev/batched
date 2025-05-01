@@ -40,7 +40,7 @@ dependencies = [
 
 [[package]]
 name = "batched"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "batched_derive",
  "tokio",
@@ -48,7 +48,7 @@ dependencies = [
 
 [[package]]
 name = "batched_derive"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "proc-macro2",
  "quote",

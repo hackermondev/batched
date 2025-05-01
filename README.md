@@ -9,17 +9,18 @@ cargo add batched
 Or add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-batched = "0.1.1"
+batched = "0.1.2"
 ```
 
 ## #[batched]
 - **window**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch.
 - **limit**: Maximum amount of items that can be grouped and processed in a single batch.
 - **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
+- **boxed**: Automatically wraps the return type in an `Arc`
 
 The target function must have a single argument, a vector of items (`Vec<T>`). The return value (must implement `Clone`) is propagated to all async calls made for the batch items. 
 
-If the target function returns a `Result<T, E>`, the generics must implement `Clone` or the return must wrapped in `Arc<T>`.
+The target function return type must implement `Clone` to propgate the result. If it cannot implement `Clone`, use the `boxed` option to automatically wrap your return type in an `Arc`.
 
 ## Prerequisites 
 - Built for async environments (tokio), will not work without a tokio async runtime
@@ -40,14 +41,33 @@ impl A {
 
 ## Examples
 
+### Simple add batch
+```rust
+#[batched(window = 100, limit = 1000)]
+async fn add(numbers: Vec<u32>) -> u32 {
+    numbers.iter().sum()
+}
+
+async fn main() {
+    for _ in 0..99 {
+        tokio::task::spawn(async move {
+            add(1).await
+        });
+    }
+
+    let result = add(1).await;
+    assert_eq!(result, 100);
+}
+```
+
 ### Batch insert Postgres rows
 
 ```rust
 use batched::batched;
 
 // Creates functions [`insert_message`] and [`insert_message_multiple`]
-#[batched(window = 100, limit = 100_000)]
-async fn insert_message_batched(messages: Vec<String>) -> Arc<Result<(), anyhow::Error>> {
+#[batched(window = 100, limit = 100_000, boxed)]
+async fn insert_message_batched(messages: Vec<String>) -> Result<(), anyhow::Error> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");
     ...
@@ -65,4 +85,3 @@ async fn service(messages: Vec<String>) -> Result<(), anyhow::Error> {
     Ok(())
 }
 ```
-

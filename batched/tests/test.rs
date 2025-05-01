@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use batched::batched;
 
 #[batched(window = 100, limit = 1000)]
@@ -18,8 +16,8 @@ async fn simple() {
     assert_eq!(total, expected_total);
 }
 
-#[batched(window = 100, limit = 1000)]
-fn error(_a: Vec<()>) -> Arc<Result<(), std::io::Error>> {
+#[batched(window = 100, limit = 1000, boxed)]
+fn error(_a: Vec<()>) -> Result<(), std::io::Error> {
     return Err(std::io::Error::other("1234")).into();
 }
 
