@@ -18,13 +18,13 @@ batched = "0.1.2"
 - **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
 - **boxed**: Automatically wraps the return type in an `Arc`
 
-The target function must have a single argument, a vector of items (`Vec<T>`). The return value (must implement `Clone`) is propagated to all async calls made for the batch items. 
+The target function must have a single argument, a vector of items (`Vec<T>`). The return value is propagated to all async calls made for the batch items. 
 
-The target function return type must implement `Clone` to propgate the result. If it cannot implement `Clone`, use the `boxed` option to automatically wrap your return type in an `Arc`.
+The target function return type must implement `Clone` to propagate the result. If it cannot implement `Clone`, use the `boxed` option to automatically wrap your return type in an `Arc`.
 
 ## Prerequisites 
 - Built for async environments (tokio), will not work without a tokio async runtime
-- Target function must have async and function name should end with `_batched`
+- Target function must have async, andthe  function name should end with `_batched`
 - Not supported inside structs
 ```rust
 struct A;
