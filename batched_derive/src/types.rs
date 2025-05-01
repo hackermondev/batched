@@ -1,7 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{
-    parse::Parser, punctuated::Punctuated, FnArg, ItemFn, Meta, Pat, PathArguments, ReturnType, Token
+    FnArg, ItemFn, Meta, Pat, PathArguments, ReturnType, Token, parse::Parser,
+    punctuated::Punctuated,
 };
 
 use crate::utils::expr_to_u64;
@@ -43,7 +44,7 @@ impl Function {
 
                 batched_arg_name = match &*arg.pat {
                     Pat::Ident(pat_ident) => Some(pat_ident.ident.to_string()),
-                    _ => panic!("unsupport argument name")
+                    _ => panic!("unsupport argument name"),
                 };
 
                 if let syn::Type::Path(type_path) = &*arg.ty {
@@ -51,11 +52,11 @@ impl Function {
                     if segment.ident == "Vec" {
                         let vec_type = match &segment.arguments {
                             PathArguments::AngleBracketed(a) => a,
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
                         let vec_type = vec_type.args.first().unwrap();
                         batched_arg_type = Some(vec_type.to_token_stream());
-                        continue
+                        continue;
                     }
                 }
 
@@ -69,32 +70,34 @@ impl Function {
 
         let batched_arg_name = batched_arg_name.unwrap();
         let batched_arg_type = batched_arg_type.unwrap();
-        
+
         Self {
             identifier,
             visibility,
             batched_arg_name,
             batched_arg_type,
             return_value,
-            inner
+            inner,
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct Attributes {
     pub window: u64,
     pub limit: usize,
+    pub concurrent_limit: Option<usize>,
 }
 
 impl Attributes {
     pub fn parse(tokens: TokenStream) -> Self {
         let mut window: Option<u64> = None;
         let mut limit: Option<usize> = None;
+        let mut concurrent_limit: Option<usize> = None;
 
         static WINDOW_ATTR: &str = "window";
         static LIMIT_ATTR: &str = "limit";
+        static CONCURRENT_LIMIT_ATTR: &str = "concurrent";
 
         let parser = Punctuated::<Meta, Token![,]>::parse_separated_nonempty;
         let attributes = parser.parse(tokens.into()).unwrap();
@@ -117,11 +120,22 @@ impl Attributes {
                 };
 
                 limit = expr_to_u64(value).map(|u| u as usize);
+            } else if path.is_ident(CONCURRENT_LIMIT_ATTR) {
+                let value = match attr {
+                    Meta::NameValue(attr) => &attr.value,
+                    _ => unimplemented!(),
+                };
+
+                concurrent_limit = expr_to_u64(value).map(|u| u as usize);
             }
         }
 
         let window = window.expect("expected required attribute: window");
         let limit = limit.expect("expected required attribute: limit");
-        Self { window, limit }
+        Self {
+            window,
+            limit,
+            concurrent_limit,
+        }
     }
 }

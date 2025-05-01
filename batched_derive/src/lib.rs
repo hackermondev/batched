@@ -1,8 +1,8 @@
 extern crate proc_macro;
 
+mod builder;
 mod types;
 mod utils;
-mod builder;
 
 use builder::build_code;
 use proc_macro::TokenStream;
@@ -16,6 +16,6 @@ pub fn batched(attributes: TokenStream, item: TokenStream) -> TokenStream {
     let result = build_code(function, attributes).into();
     #[cfg(test)]
     println!("{result}");
-    
+
     result
 }

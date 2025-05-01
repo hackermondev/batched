@@ -15,6 +15,7 @@ batched = "0.1.0"
 ## #[batched]
 - **window**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch.
 - **limit**: Maximum amount of items that can be grouped and processed in a single batch.
+- **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
 
 The target function must have a single argument, a vector of items (`Vec<T>`). The return value (must implement `Clone`) is propagated to all async calls made for the batch items. 
 
