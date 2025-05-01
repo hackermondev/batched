@@ -12,7 +12,7 @@ Or add this to your `Cargo.toml`:
 batched = "0.1.0"
 ```
 
-## #[bulked]
+## #[batched]
 - **window**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch.
 - **limit**: Maximum amount of items that can be grouped and processed in a single batch.
 
@@ -28,7 +28,7 @@ struct A;
 
 impl A {
     // NOT SUPPORTED
-    #[bulked(window = 1000, limit = 100)]
+    #[batched(window = 1000, limit = 100)]
     fn operation() {
         ...
     }
