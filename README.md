@@ -23,6 +23,7 @@ If the target function returns a `Result<T, E>`, the generics must implement `Cl
 
 ## Prerequisites 
 - Built for async environments (tokio), will not work without a tokio async runtime
+- Target function must have async and function name should end with `_batched`
 - Not supported inside structs
 ```rust
 struct A;
