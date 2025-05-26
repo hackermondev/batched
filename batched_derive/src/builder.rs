@@ -83,7 +83,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
 
                     std::mem::swap(&mut calls, &mut buffer);
                     std::mem::swap(&mut return_channels, &mut channels);
-                    if calls.is_empty() {
+                    if calls.is_empty() && return_channels.is_empty() {
                         continue
                     }
 

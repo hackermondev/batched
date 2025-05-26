@@ -1,7 +1,7 @@
 [package]
 name = "batched_derive"
 description = "rust macro util for batching expensive operations"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 license = "MIT"
 readme = "../README.md"
