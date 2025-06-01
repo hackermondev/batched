@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use batched::batched;
 
 #[tokio::test]
@@ -27,4 +29,17 @@ async fn propagates_errors() {
 
     let result = error(()).await;
     assert_eq!(result.is_err(), true);
+}
+
+#[tokio::test]
+async fn batched_window_works() {
+    #[batched(window = 1000, limit = 1000)]
+    fn add(numbers: Vec<u32>) -> u32 {
+        numbers.iter().sum()
+    }
+
+    let before = Instant::now();
+    add_multiple(vec![1, 1, 1]).await;
+    let after = before.elapsed();
+    assert!(after.as_secs() == 1);
 }

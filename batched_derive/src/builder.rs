@@ -55,13 +55,16 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
 
                 loop {
                     let mut timer = tokio::time::interval(window);
-                    timer.tick().await;
 
                     loop {
                         tokio::select! {
                             event = receiver.recv() => {
                                 if event.is_none() {
                                     return;
+                                }
+
+                                if buffer.is_empty() {
+                                    timer.reset();
                                 }
 
                                 let (mut calls, channel) = event.unwrap();
@@ -72,7 +75,13 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
                                 }
                             }
 
-                            _ = timer.tick() => {
+                            _ = async {
+                                if buffer.is_empty() {
+                                    std::future::pending().await
+                                } else {
+                                    timer.tick().await
+                                }
+                            } => {
                                 break;
                             }
                         }
