@@ -55,6 +55,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
 
                 loop {
                     let mut timer = tokio::time::interval(window);
+                    let mut recieved_first_batch = false;
 
                     loop {
                         tokio::select! {
@@ -63,9 +64,10 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
                                     return;
                                 }
 
-                                if buffer.is_empty() {
+                                if !recieved_first_batch {
                                     timer.reset();
                                 }
+                                recieved_first_batch = true;
 
                                 let (mut calls, channel) = event.unwrap();
                                 buffer.append(&mut calls);
@@ -76,7 +78,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
                             }
 
                             _ = async {
-                                if buffer.is_empty() {
+                                if !recieved_first_batch {
                                     std::future::pending().await
                                 } else {
                                     timer.tick().await

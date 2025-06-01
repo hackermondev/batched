@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use batched::batched;
 
@@ -10,9 +10,7 @@ async fn simple() {
     }
 
     for _ in 0..99 {
-        tokio::task::spawn(async move { 
-            add_multiple(vec![1, 1, 1]).await
-        });
+        tokio::task::spawn(async move { add_multiple(vec![1, 1, 1]).await });
     }
 
     let total = add_multiple(vec![1, 1, 1]).await;
@@ -29,6 +27,17 @@ async fn propagates_errors() {
 
     let result = error(()).await;
     assert_eq!(result.is_err(), true);
+}
+
+#[tokio::test]
+async fn empty_batch_works() {
+    #[batched(window = 100, limit = 1000)]
+    fn add(numbers: Vec<u32>) -> u32 {
+        numbers.iter().sum()
+    }
+
+    let timeout = tokio::time::timeout(Duration::from_secs(1), add_multiple(vec![])).await;
+    timeout.expect("batch timed out");
 }
 
 #[tokio::test]
