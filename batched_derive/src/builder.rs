@@ -2,6 +2,7 @@ use std::usize;
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use syn::parse_str;
 
 use crate::types::{Attributes, Function};
 
@@ -25,32 +26,76 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     let __spawn_background_batch = format_ident!("__spawn_background_{name}_batched");
     let batched = format_ident!("__{name}_batched");
 
-    let name = syn::parse_str::<TokenStream>(&name).unwrap();
-    let arg_name = syn::parse_str::<TokenStream>(&arg_name).unwrap();
+    let name = parse_str::<TokenStream>(&name).unwrap();
+    let arg_name = parse_str::<TokenStream>(&arg_name).unwrap();
     let fnname_multiple = format_ident!("{name}_multiple");
-    let returned_arc = if options.wrap_in_arc {
-        syn::parse_str(&format!("::std::sync::Arc<{returned}>")).unwrap()
+
+    let has_iterator_value = options.returned_iterator.is_some();
+    let returned_type = if let Some(iterator_value) = options.returned_iterator {
+        iterator_value
+    } else if options.wrap_in_arc {
+        parse_str(&format!("::std::sync::Arc<{returned}>")).unwrap()
     } else {
         returned.clone()
     };
+    let returned_type_multiple = if has_iterator_value {
+        parse_str(&format!("Vec<{returned_type}>")).unwrap()
+    } else {
+        returned_type.clone()
+    };
+
     let wrap_in_arc = if options.wrap_in_arc {
-        Some(syn::parse_str::<TokenStream>("let result = ::std::sync::Arc::new(result);").unwrap())
+        Some(parse_str::<TokenStream>("let result = ::std::sync::Arc::new(result);").unwrap())
     } else {
         None
     };
+    let handle_result: TokenStream = if has_iterator_value {
+        quote! {
+            let result = #batched(calls).await;
+            let mut result = result.into_iter();
+            for (channel, count) in return_channels {
+                let chunk = result.by_ref().take(count).collect();
+                let _ = channel.try_send(chunk);
+            }
+        }
+    } else {
+        quote! {
+            let result = #batched(calls).await;
+            #wrap_in_arc
+            for (channel, count) in return_channels {
+                let _ = channel.try_send(result.clone());
+            }
+        }
+    };
 
+    let singular_batch_function = if has_iterator_value {
+        quote! {
+            #visibility async fn #name(#arg_name: #arg_type) -> #returned_type {
+                let mut vec = #fnname_multiple(vec![#arg_name]).await;
+                vec.remove(0)
+            }
+        }
+    } else {
+        quote! {
+            #visibility async fn #name(#arg_name: #arg_type) -> #returned_type {
+                #fnname_multiple(vec![#arg_name]).await
+            }
+        }
+    };
+
+    let channel_type = quote! { (Vec<#arg_type>, ::tokio::sync::mpsc::Sender<#returned_type_multiple>) };
     quote! {
         static #batched_producer_channel:
-            ::tokio::sync::OnceCell<::tokio::sync::mpsc::Sender<(Vec<#arg_type>, ::tokio::sync::mpsc::Sender<#returned_arc>)>> = ::tokio::sync::OnceCell::const_new();
+            ::tokio::sync::OnceCell<::tokio::sync::mpsc::Sender<#channel_type>> = ::tokio::sync::OnceCell::const_new();
 
-        async fn #__spawn_background_batch() -> ::tokio::sync::mpsc::Sender<(Vec<#arg_type>, ::tokio::sync::mpsc::Sender<#returned_arc>)> {
+        async fn #__spawn_background_batch() -> ::tokio::sync::mpsc::Sender<#channel_type> {
             let capacity = #capacity;
             let window = tokio::time::Duration::from_millis(#window);
 
             let (sender, mut receiver) = tokio::sync::mpsc::channel(capacity);
             tokio::task::spawn(async move {
                 let mut buffer = Vec::with_capacity(capacity);
-                let mut channels: Vec<::tokio::sync::mpsc::Sender<#returned_arc>> = vec![];
+                let mut channels: Vec<(::tokio::sync::mpsc::Sender<#returned_type_multiple>, usize)> = vec![];
                 let semaphore = ::std::sync::Arc::new(::tokio::sync::Semaphore::new(#concurrent_limit));
 
                 loop {
@@ -69,9 +114,9 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
                                 }
                                 recieved_first_batch = true;
 
-                                let (mut calls, channel) = event.unwrap();
+                                let (mut calls, channel): (Vec<#arg_type>, ::tokio::sync::mpsc::Sender<#returned_type_multiple>) = event.unwrap();
+                                channels.push((channel, calls.len()));
                                 buffer.append(&mut calls);
-                                channels.push(channel);
                                 if buffer.len() >= capacity {
                                     break;
                                 }
@@ -101,12 +146,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
                     let permit = semaphore.clone().acquire_owned().await.unwrap();
                     tokio::task::spawn(async move {
                         let _permit = permit;
-
-                        let result = #batched(calls).await;
-                        #wrap_in_arc
-                        for channel in return_channels {
-                            let _ = channel.try_send(result.clone());
-                        }
+                        #handle_result
                     });
 
                     buffer.reserve(capacity);
@@ -116,23 +156,20 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
             sender
         }
 
-        async fn #batched(#arg) -> #returned {
-            #inner_body
-        }
+        async fn #batched(#arg) -> #returned #inner_body
 
-        #visibility async fn #name(#arg_name: #arg_type) -> #returned_arc {
-            #fnname_multiple(vec![#arg_name]).await
-        }
+        #singular_batch_function 
 
-        #visibility async fn #fnname_multiple(#arg_name: Vec<#arg_type>) -> #returned_arc {
+        #visibility async fn #fnname_multiple(#arg_name: Vec<#arg_type>) -> #returned_type_multiple {
             let channel = &#batched_producer_channel;
             let channel = channel.get_or_init(async || { #__spawn_background_batch().await }).await;
 
             let (response_channel_sender, mut response_channel_recv) = tokio::sync::mpsc::channel(1);
             channel.send((#arg_name, response_channel_sender)).await
-                .expect("batched background thread is gone");
+                .expect("batched function panicked");
 
-            let result = response_channel_recv.recv().await.expect("task panicked");
+            let result = response_channel_recv.recv().await
+                .expect("batched function panicked");
             result
         }
     }

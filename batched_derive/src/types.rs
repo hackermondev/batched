@@ -11,11 +11,11 @@ use crate::utils::expr_to_u64;
 pub struct Function {
     pub identifier: String,
     pub visibility: TokenStream,
+    pub inner: TokenStream,
     pub batched_arg: TokenStream,
     pub batched_arg_name: String,
     pub batched_arg_type: TokenStream,
     pub return_value: TokenStream,
-    pub inner: TokenStream,
 }
 
 impl Function {
@@ -26,10 +26,10 @@ impl Function {
         let identifier = function.sig.ident.to_string();
         let args = function.sig.inputs;
         let inner = function.block.to_token_stream();
-
+        
         let return_value = match function.sig.output {
             ReturnType::Default => syn::parse_str("()").unwrap(),
-            ReturnType::Type(_, _type) => _type.into_token_stream(),
+            ReturnType::Type(_, _type) => _type.into_token_stream()
         };
 
         let mut batched_arg: Option<TokenStream> = None;
@@ -92,6 +92,7 @@ pub struct Attributes {
     pub window: u64,
     pub limit: usize,
     pub concurrent_limit: Option<usize>,
+    pub returned_iterator: Option<TokenStream>,
     pub wrap_in_arc: bool,
 }
 
@@ -100,12 +101,14 @@ impl Attributes {
         let mut window: Option<u64> = None;
         let mut limit: Option<usize> = None;
         let mut concurrent_limit: Option<usize> = None;
+        let mut returned_iterator: Option<TokenStream> = None;
         let mut wrap_in_arc = false;
 
         static WINDOW_ATTR: &str = "window";
         static LIMIT_ATTR: &str = "limit";
         static CONCURRENT_LIMIT_ATTR: &str = "concurrent";
         static WRAP_ARC_ATTR: &str = "boxed";
+        static RETURNED_ITERATOR_ATTR: &str = "iterator_value";
 
         let parser = Punctuated::<Meta, Token![,]>::parse_separated_nonempty;
         let attributes = parser.parse(tokens.into()).unwrap();
@@ -137,7 +140,17 @@ impl Attributes {
                 concurrent_limit = expr_to_u64(value).map(|u| u as usize);
             } else if path.is_ident(WRAP_ARC_ATTR) {
                 wrap_in_arc = true;
+            } else if path.is_ident(RETURNED_ITERATOR_ATTR) {
+                let returned = match attr {
+                    Meta::NameValue(attr) => attr.value.to_token_stream(),
+                    _ => unimplemented!()
+                };
+                returned_iterator = Some(returned);
             }
+        }
+
+        if wrap_in_arc && returned_iterator.is_some() {
+            panic!("cannot box and return iterator")
         }
 
         let window = window.expect("expected required attribute: window");
@@ -147,6 +160,7 @@ impl Attributes {
             limit,
             concurrent_limit,
             wrap_in_arc,
+            returned_iterator,
         }
     }
 }
