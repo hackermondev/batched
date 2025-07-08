@@ -1,8 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{
-    FnArg, ItemFn, Meta, Pat, PathArguments, ReturnType, Token, parse::Parser,
-    punctuated::Punctuated,
+    FnArg, GenericArgument, ItemFn, Meta, Pat, PathArguments, ReturnType, Token, Type,
+    parse::Parser, punctuated::Punctuated,
 };
 
 use crate::utils::expr_to_u64;
@@ -15,21 +15,78 @@ pub struct Function {
     pub batched_arg: TokenStream,
     pub batched_arg_name: String,
     pub batched_arg_type: TokenStream,
-    pub return_value: TokenStream,
+    pub returned: FunctionResult,
+}
+
+#[derive(Debug)]
+pub struct FunctionResult {
+    pub result_type: FunctionResultType,
+    pub tokens: TokenStream,
+}
+
+#[derive(Debug)]
+pub enum FunctionResultType {
+    Raw(TokenStream),
+    VectorRaw(TokenStream),
+    Result(Box<FunctionResult>, TokenStream),
 }
 
 impl Function {
     pub fn parse(tokens: TokenStream) -> Self {
-        let function: ItemFn = syn::parse(tokens.into()).expect("invalid function");
+        let function: ItemFn = syn::parse2(tokens).expect("invalid function");
 
         let visibility = function.vis.into_token_stream();
         let identifier = function.sig.ident.to_string();
         let args = function.sig.inputs;
         let inner = function.block.to_token_stream();
-        
-        let return_value = match function.sig.output {
-            ReturnType::Default => syn::parse_str("()").unwrap(),
-            ReturnType::Type(_, _type) => _type.into_token_stream()
+
+        fn parsed_returned(_type: &Type) -> FunctionResult {
+            let tokens = _type.clone().into_token_stream();
+            let result_type = match _type {
+                Type::Path(type_path) => {
+                    let path = type_path.path.segments.first().unwrap();
+
+                    if path.ident == "Vec" {
+                        let inner = match &path.arguments {
+                            PathArguments::AngleBracketed(b) => b,
+                            _ => unimplemented!(),
+                        };
+                        let inner = inner.args.to_token_stream();
+                        FunctionResultType::VectorRaw(inner)
+                    } else if path.ident == "Result" {
+                        let inner = match &path.arguments {
+                            PathArguments::AngleBracketed(b) => b,
+                            _ => unimplemented!(),
+                        };
+
+                        let output = inner.args.get(0).unwrap();
+                        let error = inner.args.get(1).unwrap();
+
+                        let output = match output {
+                            GenericArgument::Type(_type) => parsed_returned(_type),
+                            _ => unimplemented!(),
+                        };
+                        let error = error.into_token_stream();
+
+                        FunctionResultType::Result(Box::new(output), error)
+                    } else {
+                        FunctionResultType::Raw(_type.into_token_stream())
+                    }
+                }
+                _ => FunctionResultType::Raw(_type.into_token_stream()),
+            };
+
+            FunctionResult {
+                tokens,
+                result_type,
+            }
+        }
+        let returned = match function.sig.output {
+            ReturnType::Default => FunctionResult {
+                tokens: function.sig.output.into_token_stream(),
+                result_type: FunctionResultType::Raw(syn::parse_str("()").unwrap()),
+            },
+            ReturnType::Type(_, _type) => parsed_returned(&_type),
         };
 
         let mut batched_arg: Option<TokenStream> = None;
@@ -81,7 +138,7 @@ impl Function {
             batched_arg,
             batched_arg_name,
             batched_arg_type,
-            return_value,
+            returned,
             inner,
         }
     }
@@ -92,8 +149,6 @@ pub struct Attributes {
     pub window: u64,
     pub limit: usize,
     pub concurrent_limit: Option<usize>,
-    pub returned_iterator: Option<TokenStream>,
-    pub wrap_in_arc: bool,
 }
 
 impl Attributes {
@@ -101,14 +156,10 @@ impl Attributes {
         let mut window: Option<u64> = None;
         let mut limit: Option<usize> = None;
         let mut concurrent_limit: Option<usize> = None;
-        let mut returned_iterator: Option<TokenStream> = None;
-        let mut wrap_in_arc = false;
 
         static WINDOW_ATTR: &str = "window";
         static LIMIT_ATTR: &str = "limit";
         static CONCURRENT_LIMIT_ATTR: &str = "concurrent";
-        static WRAP_ARC_ATTR: &str = "boxed";
-        static RETURNED_ITERATOR_ATTR: &str = "iterator_value";
 
         let parser = Punctuated::<Meta, Token![,]>::parse_separated_nonempty;
         let attributes = parser.parse(tokens.into()).unwrap();
@@ -138,19 +189,7 @@ impl Attributes {
                 };
 
                 concurrent_limit = expr_to_u64(value).map(|u| u as usize);
-            } else if path.is_ident(WRAP_ARC_ATTR) {
-                wrap_in_arc = true;
-            } else if path.is_ident(RETURNED_ITERATOR_ATTR) {
-                let returned = match attr {
-                    Meta::NameValue(attr) => attr.value.to_token_stream(),
-                    _ => unimplemented!()
-                };
-                returned_iterator = Some(returned);
             }
-        }
-
-        if wrap_in_arc && returned_iterator.is_some() {
-            panic!("cannot box and return iterator")
         }
 
         let window = window.expect("expected required attribute: window");
@@ -159,8 +198,6 @@ impl Attributes {
             window,
             limit,
             concurrent_limit,
-            wrap_in_arc,
-            returned_iterator,
         }
     }
 }

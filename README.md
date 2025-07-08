@@ -9,39 +9,35 @@ cargo add batched
 Or add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-batched = "0.1.7"
+batched = "0.2"
 ```
 
 ## #[batched]
 - **window**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch.
 - **limit**: Maximum amount of items that can be grouped and processed in a single batch.
 - **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
-- **boxed**: Automatically wraps the return type in an `Arc`
-- **iterator_value**: Iterator value
 
 The target function must have a single argument, a vector of items (`Vec<T>`). 
 
-The return value of the batched function is propagated (cloned) to all async calls of the batch, unless the batched function returns an iterator (and `iterator_value` is set), in which case the return value for each call is pulled from the iterator.
+The return value of the batched function is propagated (cloned) to all async calls of the batch, unless the batched function returns a `Vec<T>`, in which case the return value for each call is pulled from the iterator in the same order of the input.
 
-If the return value is not an iterator, The target function return type must implement `Clone` to propagate the result. Use the `boxed` option to automatically wrap your return type in an `Arc`.
+If the return value is not an iterator, The target function return type must implement `Clone` to propagate the result. Use `batched::error::SharedError` to wrap your error types (if they don't implement Clone).
 
 
 ## Prerequisites 
 - Built for async environments (tokio), will not work without a tokio async runtime
-- Target function must have async, and the function name should end with `_batched`
+- Target function must have async
 - Not supported inside structs:
 ```rust
 struct A;
 
 impl A {
-    // NOT SUPPORTED
     #[batched(window = 1000, limit = 100)]
     fn operation() {
         ...
     }
 }
 ```
-
 
 
 ## Examples
@@ -68,11 +64,11 @@ async fn main() {
 ### Batch insert rows
 
 ```rust
-use batched::batched;
+use batched::{batched, error::SharedError};
 
-// Creates functions [`insert_message`] and [`insert_message_multiple`]
+// Macros creates functions [`insert_message`] and [`insert_message_multiple`]
 #[batched(window = 100, limit = 100_000, boxed)]
-async fn insert_message_batched(messages: Vec<String>) -> Result<(), anyhow::Error> {
+async fn insert_message(messages: Vec<String>) -> Result<(), SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");
     ...
@@ -101,8 +97,7 @@ struct Row {
     pub content: String,
 }
 
-// Creates functions [`insert_message`] and [`insert_message_multiple`]
-#[batched(window = 100, limit = 100_000, iterator_value = "Row")]
+#[batched(window = 100, limit = 100_000)]
 async fn insert_message_batched(messages: Vec<String>) -> Vec<Row> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");

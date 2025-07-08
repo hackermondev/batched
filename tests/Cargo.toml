@@ -1,0 +1,14 @@
+[package]
+name = "tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dev-dependencies]
+batched = { path = "../batched" }
+batched_derive = { path = "../batched_derive" }
+tokio = { version = "1.44.2", features = ["full"] }
+
+[[test]]
+name = "macros"
+path = "macros.rs"

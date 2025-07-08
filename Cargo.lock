@@ -40,15 +40,14 @@ dependencies = [
 
 [[package]]
 name = "batched"
-version = "0.1.7"
+version = "0.2.0"
 dependencies = [
  "batched_derive",
- "tokio",
 ]
 
 [[package]]
 name = "batched_derive"
-version = "0.1.7"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -232,6 +231,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tests"
+version = "0.1.0"
+dependencies = [
+ "batched",
+ "batched_derive",
+ "tokio",
 ]
 
 [[package]]

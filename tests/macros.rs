@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use batched::batched;
+use batched::{batched, error::SharedError};
 
 #[tokio::test]
 async fn simple() {
@@ -20,13 +20,13 @@ async fn simple() {
 
 #[tokio::test]
 async fn propagates_errors() {
-    #[batched(window = 100, limit = 1000, boxed)]
-    fn error(_a: Vec<()>) -> Result<(), std::io::Error> {
-        return Err(std::io::Error::other("1234")).into();
+    #[batched(window = 100, limit = 1000)]
+    fn error(_a: Vec<()>) -> Result<(), SharedError<std::io::Error>> {
+        Err(std::io::Error::other("1234").into())
     }
 
     let result = error(()).await;
-    assert_eq!(result.is_err(), true);
+    assert!(result.is_err());
 }
 
 #[tokio::test]
@@ -41,7 +41,7 @@ async fn empty_batch() {
 }
 
 #[tokio::test]
-async fn batched_window() {
+async fn window() {
     #[batched(window = 1000, limit = 1000)]
     fn add(numbers: Vec<u32>) -> u32 {
         numbers.iter().sum()
@@ -54,16 +54,38 @@ async fn batched_window() {
 }
 
 #[tokio::test]
-async fn batched_with_returned_iterator() {
-    #[batched(window = 100, limit = 1000, iterator_value = u32)]
-    fn expensive_task(numbers: Vec<u32>) -> Vec<u32> {
+async fn returned_iterator() {
+    #[batched(window = 100, limit = 1000)]
+    fn add_each(numbers: Vec<u32>) -> Vec<u32> {
         numbers.into_iter().map(|n| n + 1).collect()
     }
 
-    let input = vec![1, 1, 1];
-    let result = expensive_task_multiple(input).await;
+    let result = add_each_multiple(vec![1, 1, 1]).await;
     assert!(result == vec![2, 2, 2]);
 
-    let result = expensive_task(2).await;
+    let result = add_each(2).await;
     assert!(result == 3);
+}
+
+#[tokio::test]
+async fn returned_iterator_with_error() {
+    #[batched(window = 100, limit = 1000)]
+    fn add_each(numbers: Vec<u32>) -> Result<Vec<u32>, SharedError<()>> {
+        Ok(numbers.into_iter().map(|n| n + 1).collect())
+    }
+
+    let result = add_each_multiple(vec![1, 1, 1]).await.unwrap();
+    assert!(result == vec![2, 2, 2]);
+
+    let result = add_each(2).await.unwrap();
+    assert!(result == 3);
+}
+
+#[test]
+fn error_type_works() {
+    fn _error() -> Result<(), SharedError<std::io::Error>> {
+        // Purely for type checking
+        std::fs::write("/tmp/1234", "1234")?;
+        Ok(())
+    }
 }
