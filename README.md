@@ -90,7 +90,7 @@ async fn service(messages: Vec<String>) -> Result<(), anyhow::Error> {
 ### Batch insert rows and return them
 
 ```rust
-use batched::batched;
+use batched::{batched, error::SharedError};
 
 struct Row {
     pub id: usize,
@@ -98,7 +98,7 @@ struct Row {
 }
 
 #[batched(window = 100, limit = 100_000)]
-async fn insert_message_batched(messages: Vec<String>) -> Vec<Row> {
+async fn insert_message_batched(messages: Vec<String>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");
     ...
