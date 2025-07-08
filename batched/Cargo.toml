@@ -1,7 +1,7 @@
 [package]
 name = "batched"
 description = "rust macro util for batching expensive operations"
-version = "0.2.1"
+version = "0.2.3"
 edition = "2024"
 license = "MIT"
 readme = "../README.md"
@@ -11,4 +11,4 @@ keywords = ["batch", "performance", "efficient"]
 
 [dependencies]
 anyhow = "1.0.98"
-batched_derive = { version = "0.2", path = "../batched_derive" }
+batched_derive = { version = "0.2.1", path = "../batched_derive" }

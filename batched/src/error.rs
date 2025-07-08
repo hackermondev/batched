@@ -35,11 +35,7 @@ impl<E> SharedError<E> {
     }
 }
 
-impl<E: std::error::Error + Debug + Display> Error for SharedError<E> {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.inner.source()
-    }
-}
+impl<E: Debug + Display> Error for SharedError<E> {}
 
 impl<E> From<E> for SharedError<E> {
     fn from(inner: E) -> Self {
