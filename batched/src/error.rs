@@ -1,5 +1,8 @@
 use std::{
-    error::Error, fmt::{Debug, Display}, ops::Deref, sync::Arc
+    error::Error,
+    fmt::{Debug, Display},
+    ops::Deref,
+    sync::Arc,
 };
 
 pub struct SharedError<E> {
@@ -14,7 +17,7 @@ impl<E> Clone for SharedError<E> {
     }
 }
 
-impl<E: std::error::Error> SharedError<E> {
+impl<E> SharedError<E> {
     pub fn new(inner: E) -> Self {
         Self {
             inner: Arc::new(inner),
@@ -38,6 +41,13 @@ impl<E: std::error::Error + Debug + Display> Error for SharedError<E> {
     }
 }
 
+impl<E> From<E> for SharedError<E> {
+    fn from(inner: E) -> Self {
+        let inner = inner.into();
+        SharedError { inner }
+    }
+}
+
 impl<E: Display> Display for SharedError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(&self.inner, f)
@@ -47,13 +57,6 @@ impl<E: Display> Display for SharedError<E> {
 impl<E: Debug> Debug for SharedError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(&self.inner, f)
-    }
-}
-
-impl<E> From<E> for SharedError<E> {
-    fn from(inner: E) -> Self {
-        let inner = inner.into();
-        SharedError { inner }
     }
 }
 

@@ -11,8 +11,7 @@ struct Identifiers {
     public_interface_multiple: Ident,
     inner_batched: Ident,
     executor_producer_channel: Ident,
-    executor_background_fn: Ident,
-    return_type_singular: TokenStream,
+    executor_background_fn: Ident
 }
 
 fn build_identifiers(call_function: &Function) -> Identifiers {
@@ -25,25 +24,12 @@ fn build_identifiers(call_function: &Function) -> Identifiers {
     let executor_producer_channel = format_ident!("BATCHED_{}", id.to_uppercase());
     let executor_background_fn = format_ident!("spawn_executor_{id}");
 
-    let return_type_singular = match &call_function.returned.result_type {
-        FunctionResultType::Raw(token) => token.clone(),
-        FunctionResultType::VectorRaw(token) => token.clone(),
-        FunctionResultType::Result(output, error) => {
-            let tokens = &output.tokens;
-            match &output.result_type {
-                FunctionResultType::VectorRaw(token) => quote! { Result<#token, #error> },
-                _ => quote! { Result<#tokens, #error> },
-            }
-        }
-    };
-
     Identifiers {
         public_interface,
         public_interface_multiple,
         inner_batched,
         executor_producer_channel,
-        executor_background_fn,
-        return_type_singular,
+        executor_background_fn
     }
 }
 
@@ -58,7 +44,18 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     let returned = &call_function.returned.tokens;
 
     let (is_result, is_vec) = function_flags(&call_function);
-    let public_interface_returned_type = &identifiers.return_type_singular;
+
+    let public_interface_returned_type = match &call_function.returned.result_type {
+        FunctionResultType::Raw(token) => token.clone(),
+        FunctionResultType::VectorRaw(token) => token.clone(),
+        FunctionResultType::Result(output, error, _) => {
+            let tokens = &output.tokens;
+            match &output.result_type {
+                FunctionResultType::VectorRaw(token) => quote! { Result<#token, #error> },
+                _ => quote! { Result<#tokens, #error> },
+            }
+        }
+    };
     let public_interface_return_result = if is_result {
         if is_vec {
             quote! {
@@ -86,7 +83,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     let public_interface_multiple_returned_type = match &call_function.returned.result_type {
         FunctionResultType::Raw(token) => token.clone(),
         FunctionResultType::VectorRaw(token) => quote! { Vec<#token> },
-        FunctionResultType::Result(output, error) => {
+        FunctionResultType::Result(output, error, _) => {
             let tokens = &output.tokens;
             match &output.result_type {
                 FunctionResultType::VectorRaw(token) => quote! { Result<Vec<#token>, #error> },
@@ -103,6 +100,19 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
         quote! { result }
     };
 
+    let cast_result_error = match &call_function.returned.result_type {
+        FunctionResultType::Raw(_) => None,
+        FunctionResultType::VectorRaw(_) => None,
+        FunctionResultType::Result(_, _, inner_shared_error) => {
+            match inner_shared_error {
+                Some(inner_shared_error) => Some(quote! {
+                    let result = result.map_err(|e: #inner_shared_error| e.into());
+                }),
+                _ => None
+            }
+        }
+    };
+
     let executor = build_executor(&identifiers, &call_function, &options);
     let executor_producer_channel = identifiers.executor_producer_channel;
     let executor_background_fn = identifiers.executor_background_fn;
@@ -113,7 +123,12 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     quote! {
         #executor
 
-        async fn #inner_batched(#arg) -> #returned #inner_body
+        async fn #inner_batched(#arg) -> #returned {
+            let result = async { #inner_body };
+            let result = result.await;
+            #cast_result_error
+            result
+        }
 
         #visibility async fn #public_interface(#arg_name: #arg_type) -> #public_interface_returned_type {
             let mut result = #public_interface_multiple(vec![#arg_name]).await;
@@ -149,7 +164,7 @@ fn build_executor(
     let returned_type_plural = match &call_function.returned.result_type {
         FunctionResultType::Raw(token) => token.clone(),
         FunctionResultType::VectorRaw(token) => quote! { Vec<#token> },
-        FunctionResultType::Result(output, error) => {
+        FunctionResultType::Result(output, error, _) => {
             let tokens = &output.tokens;
             match &output.result_type {
                 FunctionResultType::VectorRaw(token) => quote! { Result<Vec<#token>, #error> },
@@ -263,7 +278,7 @@ fn function_flags(function: &Function) -> (bool, bool) {
     let mut is_vec = false;
 
     match &function.returned.result_type {
-        FunctionResultType::Result(result, _) => {
+        FunctionResultType::Result(result, _, _) => {
             is_result = true;
             if let FunctionResultType::VectorRaw(_) = result.result_type { is_vec = true };
         }

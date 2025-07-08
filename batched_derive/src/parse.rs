@@ -28,7 +28,25 @@ pub struct FunctionResult {
 pub enum FunctionResultType {
     Raw(TokenStream),
     VectorRaw(TokenStream),
-    Result(Box<FunctionResult>, TokenStream),
+    Result(Box<FunctionResult>, TokenStream, Option<TokenStream>),
+}
+
+fn inner_shared_error(_type: &Type) -> Option<TokenStream> {
+    let type_path = match _type {
+        Type::Path(path) => path,
+        _ => unimplemented!(),
+    };
+    let path = type_path.path.segments.last().unwrap();
+    if path.ident != "SharedError" {
+        return None;
+    }
+
+    match &path.arguments {
+        PathArguments::AngleBracketed(path_args) => {
+            return Some(path_args.args.clone().into_token_stream());
+        }
+        _ => unimplemented!(),
+    }
 }
 
 impl Function {
@@ -61,14 +79,19 @@ impl Function {
 
                         let output = inner.args.get(0).unwrap();
                         let error = inner.args.get(1).unwrap();
+                        let error = match error {
+                            GenericArgument::Type(error) => error,
+                            _ => unimplemented!(),
+                        };
 
                         let output = match output {
                             GenericArgument::Type(_type) => parsed_returned(_type),
                             _ => unimplemented!(),
                         };
+                        let inner_shared_error = inner_shared_error(error);
                         let error = error.into_token_stream();
 
-                        FunctionResultType::Result(Box::new(output), error)
+                        FunctionResultType::Result(Box::new(output), error, inner_shared_error)
                     } else {
                         FunctionResultType::Raw(_type.into_token_stream())
                     }

@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dev-dependencies]
+anyhow = "1.0.98"
 batched = { path = "../batched" }
 batched_derive = { path = "../batched_derive" }
 tokio = { version = "1.44.2", features = ["full"] }
@@ -12,3 +13,7 @@ tokio = { version = "1.44.2", features = ["full"] }
 [[test]]
 name = "macros"
 path = "macros.rs"
+
+[[test]]
+name = "error"
+path = "error.rs"

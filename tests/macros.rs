@@ -81,11 +81,3 @@ async fn returned_iterator_with_error() {
     assert!(result == 3);
 }
 
-#[test]
-fn error_type_works() {
-    fn _error() -> Result<(), SharedError<std::io::Error>> {
-        // Purely for type checking
-        std::fs::write("/tmp/1234", "1234")?;
-        Ok(())
-    }
-}
