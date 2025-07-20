@@ -9,11 +9,12 @@ anyhow = "1.0.98"
 batched = { path = "../batched" }
 batched_derive = { path = "../batched_derive" }
 tokio = { version = "1.44.2", features = ["full"] }
+tracing = "0.1.41"
 
 [[test]]
-name = "macros"
-path = "macros.rs"
+name = "macro"
+path = "src/macro.rs"
 
 [[test]]
 name = "error"
-path = "error.rs"
+path = "src/error.rs"

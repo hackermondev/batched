@@ -47,10 +47,11 @@ async fn window() {
         numbers.iter().sum()
     }
 
-    let before = Instant::now();
+    let start = Instant::now();
     add_multiple(vec![1, 1, 1]).await;
-    let after = before.elapsed();
-    assert!(after.as_secs() == 1);
+
+    let elapsed = start.elapsed();
+    assert!(elapsed.as_secs() == 1);
 }
 
 #[tokio::test]
@@ -80,4 +81,3 @@ async fn returned_iterator_with_error() {
     let result = add_each(2).await.unwrap();
     assert!(result == 3);
 }
-

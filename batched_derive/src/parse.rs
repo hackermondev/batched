@@ -9,6 +9,7 @@ use crate::utils::expr_to_u64;
 
 #[derive(Debug)]
 pub struct Function {
+    pub macros: Vec<TokenStream>,
     pub identifier: String,
     pub visibility: TokenStream,
     pub inner: TokenStream,
@@ -52,6 +53,12 @@ fn inner_shared_error(_type: &Type) -> Option<TokenStream> {
 impl Function {
     pub fn parse(tokens: TokenStream) -> Self {
         let function: ItemFn = syn::parse2(tokens).expect("invalid function");
+
+        let macros = function
+            .attrs
+            .into_iter()
+            .map(|attr| attr.into_token_stream())
+            .collect();
 
         let visibility = function.vis.into_token_stream();
         let identifier = function.sig.ident.to_string();
@@ -156,6 +163,7 @@ impl Function {
         let batched_arg_type = batched_arg_type.unwrap();
 
         Self {
+            macros,
             identifier,
             visibility,
             batched_arg,

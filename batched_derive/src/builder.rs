@@ -36,6 +36,7 @@ fn build_identifiers(call_function: &Function) -> Identifiers {
 pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     let identifiers = build_identifiers(&call_function);
 
+    let macros = &call_function.macros;
     let visibility = &call_function.visibility;
     let arg = &call_function.batched_arg;
     let arg_name: TokenStream = syn::parse_str(&call_function.batched_arg_name).unwrap();
@@ -123,6 +124,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     quote! {
         #executor
 
+        #(#macros)*
         async fn #inner_batched(#arg) -> #returned {
             let result = async { #inner_body };
             let result = result.await;
@@ -246,7 +248,7 @@ fn build_executor(
                     }
 
                     if return_channels.is_empty() {
-                        break;
+                        continue;
                     }
 
                     let mut data = vec![];
