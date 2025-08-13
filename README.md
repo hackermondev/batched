@@ -74,7 +74,7 @@ async fn main() {
 use batched::{batched, error::SharedError};
 
 // Macros creates functions [`insert_message`] and [`insert_message_multiple`]
-#[batched(window = 100, limit = 100_000, boxed)]
+#[batched(window = 100, window1 = 10, window5 = 20, limit = 100_000)]
 async fn insert_message(messages: Vec<String>) -> Result<(), SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");
@@ -104,7 +104,8 @@ struct Row {
     pub content: String,
 }
 
-#[batched(window = 100, limit = 100_000)]
+// Macros creates functions [`insert_message`] and [`insert_message_multiple`]
+#[batched(window = 100, window1 = 10, window5 = 20, limit = 100_000)]
 async fn insert_message_batched(messages: Vec<String>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");
