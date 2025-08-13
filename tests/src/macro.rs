@@ -4,7 +4,7 @@ use batched::{batched, error::SharedError};
 
 #[tokio::test]
 async fn simple() {
-    #[batched(window = 100, limit = 1000)]
+    #[batched(window1 = 10, window = 100, limit = 1000)]
     fn add(numbers: Vec<u32>) -> u32 {
         numbers.iter().sum()
     }
@@ -42,15 +42,21 @@ async fn empty_batch() {
 
 #[tokio::test]
 async fn window() {
-    #[batched(window = 1000, limit = 1000)]
+    #[batched(window = 1000, window2 = 10, limit = 1000)]
     fn add(numbers: Vec<u32>) -> u32 {
         numbers.iter().sum()
     }
 
     let start = Instant::now();
-    add_multiple(vec![1, 1, 1]).await;
-
+    add_multiple(vec![1, 1]).await;
     let elapsed = start.elapsed();
+    println!("{elapsed:?}");
+    assert!(elapsed.as_millis() <= 15);
+
+    let start = Instant::now();
+    add_multiple(vec![1, 1, 1]).await;
+    let elapsed = start.elapsed();
+    println!("{elapsed:?}");
     assert!(elapsed.as_secs() == 1);
 }
 

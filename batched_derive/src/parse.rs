@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{
@@ -44,7 +46,7 @@ fn inner_shared_error(_type: &Type) -> Option<TokenStream> {
 
     match &path.arguments {
         PathArguments::AngleBracketed(path_args) => {
-            return Some(path_args.args.clone().into_token_stream());
+            Some(path_args.args.clone().into_token_stream())
         }
         _ => unimplemented!(),
     }
@@ -177,16 +179,18 @@ impl Function {
 
 #[derive(Debug)]
 pub struct Attributes {
-    pub window: u64,
     pub limit: usize,
     pub concurrent_limit: Option<usize>,
+    pub default_window: u64,
+    pub windows: BTreeMap<u64, u64>,
 }
 
 impl Attributes {
     pub fn parse(tokens: TokenStream) -> Self {
-        let mut window: Option<u64> = None;
         let mut limit: Option<usize> = None;
         let mut concurrent_limit: Option<usize> = None;
+        let mut default_window: Option<u64> = None;
+        let mut windows = BTreeMap::new();
 
         static WINDOW_ATTR: &str = "window";
         static LIMIT_ATTR: &str = "limit";
@@ -198,15 +202,7 @@ impl Attributes {
 
         for attr in &attributes {
             let path = attr.path();
-            if path.is_ident(WINDOW_ATTR) {
-                let value = match attr {
-                    Meta::NameValue(attr) => &attr.value,
-                    _ => unimplemented!(),
-                };
-
-                let window_duration_ms = expr_to_u64(value);
-                window = window_duration_ms;
-            } else if path.is_ident(LIMIT_ATTR) {
+            if path.is_ident(LIMIT_ATTR) {
                 let value = match attr {
                     Meta::NameValue(attr) => &attr.value,
                     _ => unimplemented!(),
@@ -220,15 +216,45 @@ impl Attributes {
                 };
 
                 concurrent_limit = expr_to_u64(value).map(|u| u as usize);
+            } else if path.is_ident(WINDOW_ATTR) {
+                let value = match attr {
+                    Meta::NameValue(attr) => &attr.value,
+                    _ => unimplemented!(),
+                };
+
+                let window_duration_ms = expr_to_u64(value);
+                default_window = window_duration_ms;
+            } else if let Some(ident) = path.get_ident().map(|i| i.to_string())
+                && ident.starts_with(WINDOW_ATTR)
+            {
+                let value = match attr {
+                    Meta::NameValue(attr) => &attr.value,
+                    _ => unimplemented!(),
+                };
+
+                let call_size = ident.replace(WINDOW_ATTR, "");
+                let call_size = call_size.parse::<u64>().unwrap();
+                let call_window = expr_to_u64(value).expect("expected u64");
+
+                let unsorted = windows
+                    .iter()
+                    .find(|(_call_size, _)| **_call_size > call_size);
+                if unsorted.is_some() {
+                    panic!("dynamic window call size must be sorted")
+                }
+
+                windows.insert(call_size, call_window);
             }
         }
 
-        let window = window.expect("expected required attribute: window");
+        let default_window = default_window.expect("expected required attribute: window");
         let limit = limit.expect("expected required attribute: limit");
+
         Self {
-            window,
             limit,
             concurrent_limit,
+            default_window,
+            windows,
         }
     }
 }

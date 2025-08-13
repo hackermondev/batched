@@ -1,12 +1,16 @@
 [package]
 name = "batched_derive"
 description = "rust macro util for batching expensive operations"
-version = "0.2.5"
+version = "0.2.7"
 edition = "2024"
 license = "MIT"
 readme = "../README.md"
 repository = "https://github.com/hackermondev/batched"
 keywords = ["batch", "performance", "efficient"]
+
+[features]
+default = []
+tracing_span = []
 
 [lib]
 proc-macro = true

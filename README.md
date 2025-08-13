@@ -9,13 +9,14 @@ cargo add batched
 Or add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-batched = "0.2.3"
+batched = "0.2.7"
 ```
 
 ## #[batched]
-- **window**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch.
 - **limit**: Maximum amount of items that can be grouped and processed in a single batch.
 - **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
+- **window**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch.
+- **window[x]**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch when latest buffer size is <= x
 
 The target function must have a single argument, a vector of items (`Vec<T>`). 
 
@@ -39,6 +40,12 @@ impl A {
 }
 ```
 
+## Tracing
+### [`tracing_span`]
+This feature automatically adds tracing spans to call functions for batched requests (`x`, `x_multiple`).
+
+## [`tracing_opentelemetry`]
+This feature adds support for linking spans from callers to the inner batched call when using OpenTelemetry. Depending on whether your OpenTelemetry client supports it, you should be able to see the linked span to the batched call. 
 
 ## Examples
 
