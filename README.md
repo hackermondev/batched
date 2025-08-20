@@ -1,6 +1,27 @@
 # batched
 Rust macro utility for batching expensive async operations.
 
+## What is this?
+`batched` is designed for high-throughput async environments where many small, frequent calls would otherwise overwhelm your system or database. Instead of processing each call individually, it groups them into batches based on configurable rules (time window, size limit, concurrency), then executes a single batched operation.  
+
+This saves resources, reduces contention, and improves efficiency — all while letting callers use the function as if it were unbatched.  
+
+You annotate an async function with `#[batched]`, and the macro generates the batching logic automatically.
+
+---
+
+## When it’s useful (and when it’s not)
+
+### ✅ Useful
+- **Database inserts/updates:** Instead of writing one row at a time, batch them into multi-row `INSERT` or `UPDATE` statements.
+- **External API calls with rate limits:** Reduce request overhead by batching multiple logical calls into one HTTP request.
+- **Expensive computations:** Grouping repeated small computations into a single parallel-friendly call.
+- **Services with bursts of traffic:** Smooth out request spikes by accumulating calls into fewer batch operations.
+
+### ❌ Not useful
+- **Lightweight or fast operations**: If the work per call is already cheap (e.g. adding two numbers), batching only adds complexity and overhead.
+- **Strong ordering or per-call timing guarantees required**: Calls may be delayed slightly while waiting for the batch window.
+
 ## Installation
 ```sh
 cargo add batched 
@@ -15,8 +36,8 @@ batched = "0.2.7"
 ## #[batched]
 - **limit**: Maximum amount of items that can be grouped and processed in a single batch.
 - **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
-- **window**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch.
-- **window[x]**: Minimum amount of time (in milliseconds) the background thread waits before processing a batch when latest buffer size is <= x
+- **window**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch.
+- **window[x]**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch, when the buffer size is <= x
 
 The target function must have a single argument, a vector of items (`Vec<T>`). 
 
