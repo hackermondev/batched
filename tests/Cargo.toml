@@ -20,4 +20,4 @@ name = "error"
 path = "src/error.rs"
 
 [dependencies]
-tracing-subscriber = "0.3.19"
+tracing-subscriber = "0.3.20"
