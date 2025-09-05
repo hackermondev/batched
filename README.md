@@ -30,16 +30,23 @@ cargo add batched
 Or add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-batched = "0.2.7"
+batched = "0.2.8"
 ```
 
-## #[batched]
-- **limit**: Maximum amount of items that can be grouped and processed in a single batch.
-- **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
-- **window**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch.
-- **window[x]**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch, when the buffer size is <= x
+### Nightly Rust
+Due to the use of advanced features, `batched` requires a nightly Rust compiler. 
 
-The target function must have a single argument, a vector of items (`Vec<T>`). 
+
+## #[batched]
+- **limit**: Maximum amount of items that can be grouped and processed in a single batch. (required)
+- **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
+- **asynchronous**: If true, the caller does not wait for the batch to complete, and the return value is `()`. (default: `false`).
+- **window**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch. (required)
+- **window[x]**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch, when the buffer size is <= x. (This allows for more granular control of the batching window based on the current load. For example, you might want to use a shorter window when there are fewer items in the buffer to reduce latency, and a longer window when there are more items to maximize batching efficiency.)
+
+
+
+The target function must have a single input argument, a vector of items (`Vec<T>`). 
 
 The return value of the batched function is propagated (cloned) to all async calls of the batch, unless the batched function returns a `Vec<T>`, in which case the return value for each call is pulled from the iterator in the same order of the input.
 
@@ -48,7 +55,7 @@ If the return value is not an iterator, The target function return type must imp
 
 ## Prerequisites 
 - Built for async environments (tokio), will not work without a tokio async runtime
-- Target function must have async
+- The target function must be an async function
 - Not supported inside structs:
 ```rust
 struct A;
@@ -65,7 +72,7 @@ impl A {
 ### [`tracing_span`]
 This feature automatically adds tracing spans to call functions for batched requests (`x`, `x_multiple`).
 
-## [`tracing_opentelemetry`]
+### [`tracing_opentelemetry`]
 This feature adds support for linking spans from callers to the inner batched call when using OpenTelemetry. Depending on whether your OpenTelemetry client supports it, you should be able to see the linked span to the batched call. 
 
 ## Examples

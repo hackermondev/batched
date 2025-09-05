@@ -33,9 +33,22 @@ fn build_identifiers(call_function: &Function) -> Identifiers {
     }
 }
 
-pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
-    let identifiers = build_identifiers(&call_function);
+pub fn build_code(function: Function, options: Attributes) -> TokenStream {
+    let identifiers = build_identifiers(&function);
+    let executor = build_executor(&identifiers, &function, &options);
+    let public_interface = build_public_interface(&identifiers, &function, &options);
 
+    quote! {
+        #executor
+        #public_interface
+    }
+}
+
+fn build_public_interface(
+    identifiers: &Identifiers,
+    call_function: &Function,
+    options: &Attributes,
+) -> TokenStream {
     let macros = &call_function.macros;
     let visibility = &call_function.visibility;
     let arg = &call_function.batched_arg;
@@ -45,8 +58,9 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
     let returned = &call_function.returned.tokens;
 
     let (is_result, is_vec) = function_flags(&call_function);
+    let asynchronous = options.asynchronous;
 
-    let public_interface_returned_type = match &call_function.returned.result_type {
+    let return_type = match &call_function.returned.result_type {
         FunctionResultType::Raw(token) => token.clone(),
         FunctionResultType::VectorRaw(token) => token.clone(),
         FunctionResultType::Result(output, error, _) => {
@@ -57,7 +71,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
             }
         }
     };
-    let public_interface_return_result = if is_result {
+    let return_result = if is_result {
         if is_vec {
             quote! {
                 let mut result = result?;
@@ -81,7 +95,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
         }
     };
 
-    let public_interface_multiple_returned_type = match &call_function.returned.result_type {
+    let return_type_multiple = match &call_function.returned.result_type {
         FunctionResultType::Raw(token) => token.clone(),
         FunctionResultType::VectorRaw(token) => quote! { Vec<#token> },
         FunctionResultType::Result(output, error, _) => {
@@ -92,7 +106,7 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
             }
         }
     };
-    let public_interface_multiple_return_result = if is_result {
+    let return_result_multiple = if is_result {
         quote! {
             let result = result?;
             Ok(result)
@@ -109,21 +123,18 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
             }),
     };
 
-    let executor = build_executor(&identifiers, &call_function, &options);
-    let executor_producer_channel = identifiers.executor_producer_channel;
-    let executor_background_fn = identifiers.executor_background_fn;
-    let inner_batched = identifiers.inner_batched;
-    let public_interface = identifiers.public_interface;
-    let public_interface_multiple = identifiers.public_interface_multiple;
+    let executor_producer_channel = &identifiers.executor_producer_channel;
+    let executor_background_fn = &identifiers.executor_background_fn;
+    let inner_batched = &identifiers.inner_batched;
+    let public_interface = &identifiers.public_interface;
+    let public_interface_multiple = &identifiers.public_interface_multiple;
 
     #[cfg(feature = "tracing_span")]
     let tracing_span = quote! { #[tracing::instrument(skip_all)] };
     #[cfg(not(feature = "tracing_span"))]
     let tracing_span = quote! {};
 
-    quote! {
-        #executor
-
+    let inner_batched = quote! {
         #(#macros)*
         async fn #inner_batched(#arg) -> #returned {
             let result = async { #inner_body };
@@ -131,36 +142,63 @@ pub fn build_code(call_function: Function, options: Attributes) -> TokenStream {
             #cast_result_error
             result
         }
+    };
 
-        #tracing_span
-        #visibility async fn #public_interface(#arg_name: #arg_type) -> #public_interface_returned_type {
-            let mut result = #public_interface_multiple(vec![#arg_name]).await;
-            #public_interface_return_result
+    if asynchronous {
+        quote! {
+            #inner_batched
+
+            #tracing_span
+            #visibility async fn #public_interface(#arg_name: #arg_type) {
+                #public_interface_multiple(vec![#arg_name]).await;
+            }
+
+            #tracing_span
+            #visibility async fn #public_interface_multiple(#arg_name: Vec<#arg_type>) {
+                let channel = &#executor_producer_channel;
+                let channel = channel.get_or_init(async || { #executor_background_fn().await }).await;
+
+                let span = ::batched::tracing::Span::current();
+                channel.send((#arg_name, span, None)).await
+                    .expect("batched function panicked (send)");
+            }
         }
+    } else {
+        quote! {
+            #inner_batched
 
-        #tracing_span
-        #visibility async fn #public_interface_multiple(#arg_name: Vec<#arg_type>) -> #public_interface_multiple_returned_type {
-            let channel = &#executor_producer_channel;
-            let channel = channel.get_or_init(async || { #executor_background_fn().await }).await;
+            #tracing_span
+            #visibility async fn #public_interface(#arg_name: #arg_type) -> #return_type {
+                let mut result = #public_interface_multiple(vec![#arg_name]).await;
+                #return_result
+            }
 
-            let (response_channel_sender, mut response_channel_recv) = ::tokio::sync::mpsc::channel(1);
-            let span = ::batched::tracing::Span::current();
-            channel.send((#arg_name, span, response_channel_sender)).await
-                .expect("batched function panicked (send)");
+            #tracing_span
+            #visibility async fn #public_interface_multiple(#arg_name: Vec<#arg_type>) -> #return_type_multiple {
+                let channel = &#executor_producer_channel;
+                let channel = channel.get_or_init(async || { #executor_background_fn().await }).await;
 
-            let result = response_channel_recv.recv().await
-                .expect("batched function panicked (recv)");
-            #public_interface_multiple_return_result
+                let (response_channel_sender, mut response_channel_recv) = ::tokio::sync::mpsc::channel(1);
+                let span = ::batched::tracing::Span::current();
+                channel.send((#arg_name, span, Some(response_channel_sender))).await
+                    .expect("batched function panicked (send)");
+
+                let result = response_channel_recv.recv().await
+                    .expect("batched function panicked (recv)");
+                #return_result_multiple
+            }
         }
     }
+    
 }
 
-const SEMAPHORE_MAX_PERMITS: usize = 2305843009213693951;
 fn build_executor(
     identifiers: &Identifiers,
     call_function: &Function,
     options: &Attributes,
 ) -> TokenStream {
+    const SEMAPHORE_MAX_PERMITS: usize = 2305843009213693951;
+
     let capacity = options.limit;
     let concurrent_limit = options.concurrent_limit.unwrap_or(SEMAPHORE_MAX_PERMITS);
     let default_window = options.default_window;
@@ -208,7 +246,13 @@ fn build_executor(
             let result = result.clone();
         }
     };
-    let channel_type = quote! { (Vec<#arg_type>, ::batched::tracing::Span, ::tokio::sync::mpsc::Sender<#returned_type_plural>) };
+    let handle_result = if options.asynchronous { 
+        quote! {}
+    } else {
+        handle_result
+    };
+
+    let channel_type = quote! { (Vec<#arg_type>, ::batched::tracing::Span, Option<::tokio::sync::mpsc::Sender<#returned_type_plural>>) };
 
     let inner_batched = &identifiers.inner_batched;
     let batched_span_name = inner_batched.to_string();
@@ -230,8 +274,8 @@ fn build_executor(
                 let semaphore = ::std::sync::Arc::new(::tokio::sync::Semaphore::new(#concurrent_limit));
 
                 loop {
-                    let mut data_buffer = Vec::with_capacity(capacity);
-                    let mut return_channels: Vec<(::tokio::sync::mpsc::Sender<#returned_type_plural>, usize)> = vec![];
+                    let mut data_buffer = Vec::new();
+                    let mut return_channels: Vec<(Option<::tokio::sync::mpsc::Sender<#returned_type_plural>>, usize)> = vec![];
                     let mut waiting_spans: Vec<::batched::tracing::Span> = vec![];
 
                     let window_start = ::std::time::Instant::now();
@@ -294,7 +338,9 @@ fn build_executor(
                         let mut result = ::batched::tracing::Instrument::instrument(future, batched_span).await;
                         for (channel, count) in channels {
                             #handle_result
-                            let _ = channel.try_send(result);
+                            if let Some(channel) = channel {
+                                let _ = channel.try_send(result);
+                            }
                         }
                     });
                 }

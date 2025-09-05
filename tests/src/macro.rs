@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::{sync::{atomic::AtomicBool, LazyLock}, time::{Duration, Instant}};
 
 use batched::{batched, error::SharedError};
 
@@ -38,6 +38,27 @@ async fn empty_batch() {
 
     let timeout = tokio::time::timeout(Duration::from_secs(1), add_multiple(vec![])).await;
     timeout.expect("batch timed out");
+}
+
+#[tokio::test]
+async fn asynchronous() {
+    static BACKGROUND_FN_RAN: LazyLock<AtomicBool> = LazyLock::new(|| 
+        AtomicBool::new(false)
+    );
+
+    #[batched(window = 500, limit = 1000, asynchronous)]
+    fn add(numbers: Vec<u32>) {
+        let _sum = numbers.iter().sum::<u32>();
+        BACKGROUND_FN_RAN.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    let instant = Instant::now();
+    add(1).await;
+    assert!(instant.elapsed().as_millis() < 5);
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let background_fn_ran = BACKGROUND_FN_RAN.load(std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(background_fn_ran, true);
 }
 
 #[tokio::test]

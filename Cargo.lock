@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "batched"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "anyhow",
  "batched_derive",
@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "batched_derive"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -31,7 +31,7 @@ pub struct FunctionResult {
 pub enum FunctionResultType {
     Raw(TokenStream),
     VectorRaw(TokenStream),
-    Result(Box<FunctionResult>, TokenStream, Option<TokenStream>),
+    Result(Box<FunctionResult>, TokenStream, Option<TokenStream>)
 }
 
 fn inner_shared_error(_type: &Type) -> Option<TokenStream> {
@@ -115,7 +115,7 @@ impl Function {
         }
         let returned = match function.sig.output {
             ReturnType::Default => FunctionResult {
-                tokens: function.sig.output.into_token_stream(),
+                tokens: syn::parse_str("()").unwrap(),
                 result_type: FunctionResultType::Raw(syn::parse_str("()").unwrap()),
             },
             ReturnType::Type(_, _type) => parsed_returned(&_type),
@@ -181,6 +181,7 @@ impl Function {
 pub struct Attributes {
     pub limit: usize,
     pub concurrent_limit: Option<usize>,
+    pub asynchronous: bool,
     pub default_window: u64,
     pub windows: BTreeMap<u64, u64>,
 }
@@ -189,12 +190,14 @@ impl Attributes {
     pub fn parse(tokens: TokenStream) -> Self {
         let mut limit: Option<usize> = None;
         let mut concurrent_limit: Option<usize> = None;
+        let mut asynchronous = false;
         let mut default_window: Option<u64> = None;
         let mut windows = BTreeMap::new();
 
         static WINDOW_ATTR: &str = "window";
         static LIMIT_ATTR: &str = "limit";
         static CONCURRENT_LIMIT_ATTR: &str = "concurrent";
+        static ASYNCHRONOUS_ATTR: &str = "asynchronous";
 
         let parser = Punctuated::<Meta, Token![,]>::parse_separated_nonempty;
         let attributes = parser.parse(tokens.into()).unwrap();
@@ -216,6 +219,8 @@ impl Attributes {
                 };
 
                 concurrent_limit = expr_to_u64(value).map(|u| u as usize);
+            } else if path.is_ident(ASYNCHRONOUS_ATTR) {
+                asynchronous = true;
             } else if path.is_ident(WINDOW_ATTR) {
                 let value = match attr {
                     Meta::NameValue(attr) => &attr.value,
@@ -253,6 +258,7 @@ impl Attributes {
         Self {
             limit,
             concurrent_limit,
+            asynchronous,
             default_window,
             windows,
         }
