@@ -179,9 +179,10 @@ impl Function {
 
 #[derive(Debug)]
 pub struct Attributes {
-    pub limit: usize,
+    pub limit: Option<usize>,
     pub concurrent_limit: Option<usize>,
     pub asynchronous: bool,
+    pub passthrough: bool,
     pub default_window: u64,
     pub windows: BTreeMap<u64, u64>,
 }
@@ -191,6 +192,7 @@ impl Attributes {
         let mut limit: Option<usize> = None;
         let mut concurrent_limit: Option<usize> = None;
         let mut asynchronous = false;
+        let mut passthrough = false;
         let mut default_window: Option<u64> = None;
         let mut windows = BTreeMap::new();
 
@@ -198,6 +200,7 @@ impl Attributes {
         static LIMIT_ATTR: &str = "limit";
         static CONCURRENT_LIMIT_ATTR: &str = "concurrent";
         static ASYNCHRONOUS_ATTR: &str = "asynchronous";
+        static PASSTHROUGH_ATTR: &str = "passthrough";
 
         let parser = Punctuated::<Meta, Token![,]>::parse_separated_nonempty;
         let attributes = parser.parse(tokens.into()).unwrap();
@@ -221,6 +224,8 @@ impl Attributes {
                 concurrent_limit = expr_to_u64(value).map(|u| u as usize);
             } else if path.is_ident(ASYNCHRONOUS_ATTR) {
                 asynchronous = true;
+            } else if path.is_ident(PASSTHROUGH_ATTR) {
+                passthrough = true;
             } else if path.is_ident(WINDOW_ATTR) {
                 let value = match attr {
                     Meta::NameValue(attr) => &attr.value,
@@ -252,13 +257,14 @@ impl Attributes {
             }
         }
 
-        let default_window = default_window.expect("expected required attribute: window");
-        let limit = limit.expect("expected required attribute: limit");
+        let default_window = default_window
+            .expect("expected required attribute: window");
 
         Self {
             limit,
             concurrent_limit,
             asynchronous,
+            passthrough,
             default_window,
             windows,
         }

@@ -10,6 +10,7 @@ struct Identifiers {
     public_interface: Ident,
     public_interface_multiple: Ident,
     inner_batched: Ident,
+    inner_passthrough: Ident,
     executor_producer_channel: Ident,
     executor_background_fn: Ident,
 }
@@ -20,6 +21,7 @@ fn build_identifiers(call_function: &Function) -> Identifiers {
     let public_interface = format_ident!("{id}");
     let public_interface_multiple = format_ident!("{id}_multiple");
     let inner_batched = format_ident!("{id}__batched");
+    let inner_passthrough = format_ident!("{id}__passthrough");
 
     let executor_producer_channel = format_ident!("BATCHED_{}", id.to_uppercase());
     let executor_background_fn = format_ident!("spawn_executor_{id}");
@@ -28,6 +30,7 @@ fn build_identifiers(call_function: &Function) -> Identifiers {
         public_interface,
         public_interface_multiple,
         inner_batched,
+        inner_passthrough,
         executor_producer_channel,
         executor_background_fn,
     }
@@ -59,6 +62,7 @@ fn build_public_interface(
 
     let (is_result, is_vec) = function_flags(&call_function);
     let asynchronous = options.asynchronous;
+    let passthrough = options.passthrough;
 
     let return_type = match &call_function.returned.result_type {
         FunctionResultType::Raw(token) => token.clone(),
@@ -126,6 +130,7 @@ fn build_public_interface(
     let executor_producer_channel = &identifiers.executor_producer_channel;
     let executor_background_fn = &identifiers.executor_background_fn;
     let inner_batched = &identifiers.inner_batched;
+    let inner_passthrough = &identifiers.inner_passthrough;
     let public_interface = &identifiers.public_interface;
     let public_interface_multiple = &identifiers.public_interface_multiple;
 
@@ -143,10 +148,20 @@ fn build_public_interface(
             result
         }
     };
+    let passthrough = if passthrough { quote! {
+        #(#macros)*
+        #visibility async fn #inner_passthrough(#arg) -> #returned {
+            let result = async { #inner_body };
+            let result = result.await;
+            #cast_result_error
+            result
+        }
+    } } else { quote! {} };
 
     if asynchronous {
         quote! {
             #inner_batched
+            #passthrough
 
             #tracing_span
             #visibility async fn #public_interface(#arg_name: #arg_type) {
@@ -166,7 +181,8 @@ fn build_public_interface(
     } else {
         quote! {
             #inner_batched
-
+            #passthrough
+            
             #tracing_span
             #visibility async fn #public_interface(#arg_name: #arg_type) -> #return_type {
                 let mut result = #public_interface_multiple(vec![#arg_name]).await;
@@ -199,7 +215,7 @@ fn build_executor(
 ) -> TokenStream {
     const SEMAPHORE_MAX_PERMITS: usize = 2305843009213693951;
 
-    let capacity = options.limit;
+    let capacity = options.limit.unwrap_or(usize::MAX);
     let concurrent_limit = options.concurrent_limit.unwrap_or(SEMAPHORE_MAX_PERMITS);
     let default_window = options.default_window;
     let asynchronous = options.asynchronous;
@@ -275,7 +291,7 @@ fn build_executor(
             #windows
 
 
-            let (sender, mut receiver) = tokio::sync::mpsc::channel(capacity);
+            let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
             tokio::task::spawn(async move {
                 let semaphore = ::std::sync::Arc::new(::tokio::sync::Semaphore::new(#concurrent_limit));
 

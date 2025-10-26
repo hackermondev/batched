@@ -62,6 +62,19 @@ async fn asynchronous() {
 }
 
 #[tokio::test]
+async fn passthrough() {
+    #[batched(window = 500, limit = 1000, passthrough)]
+    fn add(numbers: Vec<u32>) -> u32 {
+        numbers.iter().sum::<u32>()
+    }
+
+    let instant = Instant::now();
+    let sum = add__passthrough(vec![1]).await;
+    assert!(instant.elapsed().as_millis() < 1);
+    assert_eq!(sum, 1);
+}
+
+#[tokio::test]
 async fn window() {
     #[batched(window = 1000, window2 = 10, limit = 1000)]
     fn add(numbers: Vec<u32>) -> u32 {

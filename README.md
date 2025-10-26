@@ -30,7 +30,7 @@ cargo add batched
 Or add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-batched = "0.2.9"
+batched = "0.2.11"
 ```
 
 ### Nightly Rust
@@ -38,9 +38,10 @@ Due to the use of advanced features, `batched` requires a nightly Rust compiler.
 
 
 ## #[batched]
-- **limit**: Maximum amount of items that can be grouped and processed in a single batch. (required)
+- **limit**: Maximum amount of items that can be grouped and processed in a single batch. (optional)
 - **concurrent**: Maximum amount of concurrent batched tasks running (default: `Infinity`)
 - **asynchronous**: If true, the caller does not wait for the batch to complete, and the return value is `()`. (default: `false`).
+- **passthrough**: If true, an additional function is generated that directly calls the inner batched function without batching. This is useful for scenarios where you want to bypass batching for specific calls. (default: `false`)
 - **window**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch. (required)
 - **window[x]**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch, when the buffer size is <= x. (This allows for more granular control of the batching window based on the current load. For example, you might want to use a shorter window when there are fewer items in the buffer to reduce latency, and a longer window when there are more items to maximize batching efficiency.)
 
@@ -48,13 +49,13 @@ Due to the use of advanced features, `batched` requires a nightly Rust compiler.
 
 The target function must have a single input argument, a vector of items (`Vec<T>`). 
 
-The return value of the batched function is propagated (cloned) to all async calls of the batch, unless the batched function returns a `Vec<T>`, in which case the return value for each call is pulled from the iterator in the same order of the input.
+The return value of the batched function is propagated (cloned) to all async calls of the batch, unless the batched function returns a `Vec<T>`, in which case the return value for each call is pulled from the vector in the same order of the input.
 
-If the return value is not an iterator, The target function return type must implement `Clone` to propagate the result. Use `batched::error::SharedError` to wrap your error types (if they don't implement Clone).
+If the return value is not a `Vec`, The target function return type must implement `Clone` to propagate the result. Use `batched::error::SharedError` to wrap your error types (if they don't implement Clone).
 
 
 ## Prerequisites 
-- Built for async environments (tokio), will not work without a tokio async runtime
+- Built for async environments (tokio), will not work without a running tokio async runtime
 - The target function must be an async function
 - Not supported inside structs:
 ```rust
@@ -101,7 +102,7 @@ async fn main() {
 ```rust
 use batched::{batched, error::SharedError};
 
-// Macros creates functions [`insert_message`] and [`insert_message_multiple`]
+// `batched` macro creates functions [`insert_message`] and [`insert_message_multiple`]
 #[batched(window = 100, window1 = 10, window5 = 20, limit = 100_000)]
 async fn insert_message(messages: Vec<String>) -> Result<(), SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
@@ -132,7 +133,7 @@ struct Row {
     pub content: String,
 }
 
-// Macros creates functions [`insert_message`] and [`insert_message_multiple`]
+// `batched` macro creates functions [`insert_message`] and [`insert_message_multiple`]
 #[batched(window = 100, window1 = 10, window5 = 20, limit = 100_000)]
 async fn insert_message_batched(messages: Vec<String>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
