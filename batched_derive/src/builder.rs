@@ -202,7 +202,8 @@ fn build_executor(
     let capacity = options.limit;
     let concurrent_limit = options.concurrent_limit.unwrap_or(SEMAPHORE_MAX_PERMITS);
     let default_window = options.default_window;
-
+    let asynchronous = options.asynchronous;
+    
     let windows = options.windows.iter();
     let windows = windows.map(|(call_size, call_window)| {
         quote! { windows.insert(#call_size, #call_window); }
@@ -246,13 +247,18 @@ fn build_executor(
             let result = result.clone();
         }
     };
-    let handle_result = if options.asynchronous { 
-        quote! {}
-    } else {
-        handle_result
-    };
 
     let channel_type = quote! { (Vec<#arg_type>, ::batched::tracing::Span, Option<::tokio::sync::mpsc::Sender<#returned_type_plural>>) };
+    let propagate_result = if asynchronous { quote! {} } else {
+        quote! {
+            for (channel, count) in channels {
+                #handle_result
+                if let Some(channel) = channel {
+                    let _ = channel.try_send(result);
+                }
+            }
+        }
+    };
 
     let inner_batched = &identifiers.inner_batched;
     let batched_span_name = inner_batched.to_string();
@@ -336,12 +342,7 @@ fn build_executor(
 
                         let future = #inner_batched(data);
                         let mut result = ::batched::tracing::Instrument::instrument(future, batched_span).await;
-                        for (channel, count) in channels {
-                            #handle_result
-                            if let Some(channel) = channel {
-                                let _ = channel.try_send(result);
-                            }
-                        }
+                        #propagate_result
                     });
                 }
             });

@@ -30,7 +30,7 @@ cargo add batched
 Or add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-batched = "0.2.8"
+batched = "0.2.9"
 ```
 
 ### Nightly Rust
