@@ -43,8 +43,7 @@ Due to the use of advanced features, `batched` requires a nightly Rust compiler.
 - **asynchronous**: If true, the caller does not wait for the batch to complete, and the return value is `()`. (default: `false`).
 - **passthrough**: If true, an additional function is generated that directly calls the inner batched function without batching. This is useful for scenarios where you want to bypass batching for specific calls. (default: `false`)
 - **window**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch. (required)
-- **window[x]**: Maximum amount of time (in milliseconds) the background thread waits after the first call before processing a batch, when the buffer size is <= x. (This allows for more granular control of the batching window based on the current load. For example, you might want to use a shorter window when there are fewer items in the buffer to reduce latency, and a longer window when there are more items to maximize batching efficiency.)
-
+- **partition**/**partition_async**: A closure (or async closure) to call for resolving a value's partition. If set, batch calls will be grouped by partitions; values with the same partition will be grouped together. Can be useful for grouping calls to a specific region or replica.
 
 
 The target function must have a single input argument, a vector of items (`Vec<T>`). 
@@ -55,7 +54,7 @@ If the return value is not a `Vec`, The target function return type must impleme
 
 
 ## Prerequisites 
-- Built for async environments (tokio), will not work without a running tokio async runtime
+- Built for Tokio async environments; a Tokio async runtime must be running
 - The target function must be an async function
 - Not supported inside structs:
 ```rust
@@ -78,7 +77,7 @@ This feature adds support for linking spans from callers to the inner batched ca
 
 ## Examples
 
-### Simple add batch
+### Add batch showcasing basic usage
 ```rust
 #[batched(window = 100, limit = 1000)]
 async fn add(numbers: Vec<u32>) -> u32 {
@@ -103,7 +102,7 @@ async fn main() {
 use batched::{batched, error::SharedError};
 
 // `batched` macro creates functions [`insert_message`] and [`insert_message_multiple`]
-#[batched(window = 100, window1 = 10, window5 = 20, limit = 100_000)]
+#[batched(window = 100, limit = 100_000)]
 async fn insert_message(messages: Vec<String>) -> Result<(), SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");
@@ -123,7 +122,7 @@ async fn service(messages: Vec<String>) -> Result<(), anyhow::Error> {
 }
 ```
 
-### Batch insert rows and return them
+### Batch insert rows and propagate values
 
 ```rust
 use batched::{batched, error::SharedError};
@@ -134,7 +133,7 @@ struct Row {
 }
 
 // `batched` macro creates functions [`insert_message`] and [`insert_message_multiple`]
-#[batched(window = 100, window1 = 10, window5 = 20, limit = 100_000)]
+#[batched(window = 100, limit = 100_000)]
 async fn insert_message_batched(messages: Vec<String>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");
@@ -143,13 +142,58 @@ async fn insert_message_batched(messages: Vec<String>) -> Result<Vec<Row>, Share
 
 #[post("/message")]
 async fn service(message: String) -> Result<(), anyhow::Error> {
-    let message: Row = insert_message(message).await?;
+    let insert_message_result: Result<Row, SharedError<anyhow::Error>> = insert_message(message).await;
+    let message: Row = insert_message_result?;
     Ok(())
 }
 
 #[post("/bulk_messages")]
 async fn service(messages: Vec<String>) -> Result<(), anyhow::Error> {
-    let messages: Vec<Row> = insert_message_multiple(messages).await?;
+    let insert_messages_result: Result<Vec<Row>, SharedError<anyhow::Error>> = insert_message_multiple(messages).await;
+    let messages: Vec<Row> = insert_messages_result?;
+    Ok(())
+}
+```
+
+### Batch insert rows with partitioned rows
+
+```rust
+use batched::{batched, error::SharedError};
+
+struct Message {
+    channel_id: u64,
+    author_id: u64,
+    content: String,
+}
+
+struct Row {
+    pub id: usize,
+    pub content: String,
+}
+
+// `batched` macro creates functions [`insert_message`] and [`insert_message_multiple`]
+#[batched(window = 100, limit = 100_000, partition = |message| message.channel_id % 10)]
+async fn insert_message_batched(messages: Vec<Message>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
+    let first_message_ref = messages.get(0).unwrap();
+    let database_partition = first_message_ref.channel_id % 10;
+    
+    let postgres_url = format!("postgres://user:password@postgresdb{database_partition}/dbname");
+    let pool = PgPool::connect(postgres_url).await?;
+    let mut query = String::from("INSERT INTO messages (channel_id, author_id, content) VALUES ");
+    ...
+}
+
+#[post("/message")]
+async fn service(message: Message) -> Result<(), anyhow::Error> {
+    let insert_message_result: Result<Row, SharedError<anyhow::Error>> = insert_message(message).await;
+    let message: Row = insert_message_result?;
+    Ok(())
+}
+
+#[post("/bulk_messages")]
+async fn service(messages: Vec<Message>) -> Result<(), anyhow::Error> {
+    let insert_messages_result: Result<Vec<Row>, SharedError<anyhow::Error>> = insert_message_multiple(messages).await;
+    let messages: Vec<Row> = insert_messages_result?;
     Ok(())
 }
 ```

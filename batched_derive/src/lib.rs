@@ -15,7 +15,8 @@ pub fn batched(attributes: TokenStream, item: TokenStream) -> TokenStream {
     let _identifier = function.identifier.clone();
 
     let result = build_code(function, attributes).into();
-    #[cfg(test)]
-    println!("{}: {result}", _identifier);
+    if option_env!("BATCHED_DEBUG_OUTPUT").is_some() {
+        println!("{}: {result}", _identifier);
+    }
     result
 }

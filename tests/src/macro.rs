@@ -1,10 +1,13 @@
-use std::{sync::{atomic::AtomicBool, LazyLock}, time::{Duration, Instant}};
+use std::{
+    sync::{LazyLock, atomic::AtomicBool},
+    time::{Duration, Instant},
+};
 
 use batched::{batched, error::SharedError};
 
 #[tokio::test]
 async fn simple() {
-    #[batched(window1 = 10, window = 100, limit = 1000)]
+    #[batched(window = 100, limit = 1000)]
     fn add(numbers: Vec<u32>) -> u32 {
         numbers.iter().sum()
     }
@@ -42,9 +45,7 @@ async fn empty_batch() {
 
 #[tokio::test]
 async fn asynchronous() {
-    static BACKGROUND_FN_RAN: LazyLock<AtomicBool> = LazyLock::new(|| 
-        AtomicBool::new(false)
-    );
+    static BACKGROUND_FN_RAN: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(false));
 
     #[batched(window = 500, limit = 1000, asynchronous)]
     fn add(numbers: Vec<u32>) {
@@ -76,19 +77,13 @@ async fn passthrough() {
 
 #[tokio::test]
 async fn window() {
-    #[batched(window = 1000, window2 = 10, limit = 1000)]
+    #[batched(window = 1000, limit = 1000)]
     fn add(numbers: Vec<u32>) -> u32 {
         numbers.iter().sum()
     }
 
     let start = Instant::now();
     add_multiple(vec![1, 1]).await;
-    let elapsed = start.elapsed();
-    println!("{elapsed:?}");
-    assert!(elapsed.as_millis() <= 15);
-
-    let start = Instant::now();
-    add_multiple(vec![1, 1, 1]).await;
     let elapsed = start.elapsed();
     println!("{elapsed:?}");
     assert!(elapsed.as_secs() == 1);
@@ -120,4 +115,40 @@ async fn returned_iterator_with_error() {
 
     let result = add_each(2).await.unwrap();
     assert!(result == 3);
+}
+
+#[tokio::test]
+async fn partition_resolver() {
+    #[batched(
+        window = 100,
+        limit = 1000,
+        partition = |x: &u32| x / 10
+    )]
+    fn round_down(numbers: Vec<u32>) -> Vec<u32> {
+        let first_number = numbers.get(0).unwrap();
+        let round_down = *first_number / 10;
+
+        (0..(numbers.len())).map(|_| round_down).collect()
+    }
+
+    let result = round_down_multiple(vec![10, 15, 25, 27, 30, 31]).await;
+    assert_eq!(result, vec![1, 1, 2, 2, 3, 3]);
+}
+
+#[tokio::test]
+async fn async_partition_ressolver() {
+    #[batched(
+        window = 100,
+        limit = 1000,
+        partition_async = async |x: &u32| x / 10
+    )]
+    fn round_down(numbers: Vec<u32>) -> Vec<u32> {
+        let first_number = numbers.get(0).unwrap();
+        let round_down = *first_number / 10;
+
+        (0..(numbers.len())).map(|_| round_down).collect()
+    }
+
+    let result = round_down_multiple(vec![10, 15, 25, 27, 30, 31]).await;
+    assert_eq!(result, vec![1, 1, 2, 2, 3, 3]);
 }

@@ -1,9 +1,7 @@
-use std::collections::BTreeMap;
-
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{
-    FnArg, GenericArgument, ItemFn, Meta, Pat, PathArguments, ReturnType, Token, Type,
+    Expr, FnArg, GenericArgument, ItemFn, Meta, Pat, PathArguments, ReturnType, Token, Type,
     parse::Parser, punctuated::Punctuated,
 };
 
@@ -31,7 +29,7 @@ pub struct FunctionResult {
 pub enum FunctionResultType {
     Raw(TokenStream),
     VectorRaw(TokenStream),
-    Result(Box<FunctionResult>, TokenStream, Option<TokenStream>)
+    Result(Box<FunctionResult>, TokenStream, Option<TokenStream>),
 }
 
 fn inner_shared_error(_type: &Type) -> Option<TokenStream> {
@@ -177,14 +175,43 @@ impl Function {
     }
 }
 
+impl Function {
+    pub fn returns_result_type(&self) -> bool {
+        match &self.returned.result_type {
+            FunctionResultType::Result(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn returns_vec_type(&self) -> bool {
+        match &self.returned.result_type {
+            FunctionResultType::VectorRaw(..) => true,
+            FunctionResultType::Result(result, ..) => {
+                if let FunctionResultType::VectorRaw(_) = result.result_type {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Attributes {
     pub limit: Option<usize>,
     pub concurrent_limit: Option<usize>,
     pub asynchronous: bool,
     pub passthrough: bool,
-    pub default_window: u64,
-    pub windows: BTreeMap<u64, u64>,
+    pub window: u64,
+    pub partition_resolver: Option<PartitionResolver>,
+}
+
+#[derive(Debug)]
+pub enum PartitionResolver {
+    Function(Expr),
+    AsyncFunction(Expr),
 }
 
 impl Attributes {
@@ -193,14 +220,16 @@ impl Attributes {
         let mut concurrent_limit: Option<usize> = None;
         let mut asynchronous = false;
         let mut passthrough = false;
-        let mut default_window: Option<u64> = None;
-        let mut windows = BTreeMap::new();
+        let mut window: Option<u64> = None;
+        let mut partition_resolver = None;
 
         static WINDOW_ATTR: &str = "window";
         static LIMIT_ATTR: &str = "limit";
         static CONCURRENT_LIMIT_ATTR: &str = "concurrent";
         static ASYNCHRONOUS_ATTR: &str = "asynchronous";
         static PASSTHROUGH_ATTR: &str = "passthrough";
+        static PARTITION_RESOLVER_ATTR: &str = "partition";
+        static ASYNC_PARTITION_RESOLVER_ATTR: &str = "partition_async";
 
         let parser = Punctuated::<Meta, Token![,]>::parse_separated_nonempty;
         let attributes = parser.parse(tokens.into()).unwrap();
@@ -233,40 +262,33 @@ impl Attributes {
                 };
 
                 let window_duration_ms = expr_to_u64(value);
-                default_window = window_duration_ms;
-            } else if let Some(ident) = path.get_ident().map(|i| i.to_string())
-                && ident.starts_with(WINDOW_ATTR)
-            {
-                let value = match attr {
+                window = window_duration_ms;
+            } else if path.is_ident(PARTITION_RESOLVER_ATTR) {
+                let expr = match attr {
                     Meta::NameValue(attr) => &attr.value,
                     _ => unimplemented!(),
                 };
-
-                let call_size = ident.replace(WINDOW_ATTR, "");
-                let call_size = call_size.parse::<u64>().unwrap();
-                let call_window = expr_to_u64(value).expect("expected u64");
-
-                let unsorted = windows
-                    .iter()
-                    .find(|(_call_size, _)| **_call_size > call_size);
-                if unsorted.is_some() {
-                    panic!("dynamic window call size must be sorted")
-                }
-
-                windows.insert(call_size, call_window);
+                let expr = expr.clone();
+                partition_resolver = Some(PartitionResolver::Function(expr));
+            } else if path.is_ident(ASYNC_PARTITION_RESOLVER_ATTR) {
+                let expr = match attr {
+                    Meta::NameValue(attr) => &attr.value,
+                    _ => unimplemented!(),
+                };
+                let expr = expr.clone();
+                partition_resolver = Some(PartitionResolver::AsyncFunction(expr));
             }
         }
 
-        let default_window = default_window
-            .expect("expected required attribute: window");
+        let window = window.expect("expected required attribute: window");
 
         Self {
             limit,
             concurrent_limit,
             asynchronous,
             passthrough,
-            default_window,
-            windows,
+            window,
+            partition_resolver,
         }
     }
 }
