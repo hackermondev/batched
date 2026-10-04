@@ -7,7 +7,6 @@ use syn::{
 
 use crate::utils::expr_to_u64;
 
-#[derive(Debug)]
 pub struct Function {
     pub macros: Vec<TokenStream>,
     pub identifier: String,
@@ -19,13 +18,11 @@ pub struct Function {
     pub returned: FunctionResult,
 }
 
-#[derive(Debug)]
 pub struct FunctionResult {
     pub result_type: FunctionResultType,
     pub tokens: TokenStream,
 }
 
-#[derive(Debug)]
 pub enum FunctionResultType {
     Raw(TokenStream),
     VectorRaw(TokenStream),
@@ -198,7 +195,6 @@ impl Function {
     }
 }
 
-#[derive(Debug)]
 pub struct Attributes {
     pub limit: Option<usize>,
     pub concurrent_limit: Option<usize>,
@@ -208,7 +204,6 @@ pub struct Attributes {
     pub partition_resolver: Option<PartitionResolver>,
 }
 
-#[derive(Debug)]
 pub enum PartitionResolver {
     Function(Expr),
     AsyncFunction(Expr),
