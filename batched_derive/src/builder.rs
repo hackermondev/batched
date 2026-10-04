@@ -1,5 +1,6 @@
 use std::usize;
 
+use inflection::{plural, singular};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::Ident;
@@ -8,7 +9,9 @@ use crate::parse::{Attributes, Function, FunctionResultType};
 
 struct Identifiers {
     public_interface: Ident,
-    public_interface_multiple: Ident,
+    public_interface_arg: Ident,
+    public_interface_plural: Ident,
+    public_interface_plural_arg: Ident,
     inner_batched: Ident,
     inner_passthrough: Ident,
     executor_batch_data_struct_type: Ident,
@@ -18,9 +21,19 @@ struct Identifiers {
 
 fn build_identifiers(call_function: &Function) -> Identifiers {
     let id = &call_function.identifier;
+    let id = if let Some(batched_pos) = id.find("_batched") {
+        (&id[..batched_pos]).to_string()
+    } else { id.to_string() };
+    let id = &id;
+
+    let arg_name = &call_function.batched_arg_name;
 
     let public_interface = format_ident!("{id}");
-    let public_interface_multiple = format_ident!("{id}_multiple");
+    let public_interface_arg = format_ident!("{}", singular::<_, String>(arg_name));
+
+    let public_interface_plural = format_ident!("{}", plural::<_, String>(id));
+    let public_interface_plural_arg = format_ident!("{}", plural::<_, String>(arg_name));
+
     let inner_batched = format_ident!("{id}__batched");
     let inner_passthrough = format_ident!("{id}__passthrough");
 
@@ -30,7 +43,9 @@ fn build_identifiers(call_function: &Function) -> Identifiers {
 
     Identifiers {
         public_interface,
-        public_interface_multiple,
+        public_interface_arg,
+        public_interface_plural,
+        public_interface_plural_arg,
         inner_batched,
         inner_passthrough,
         executor_batch_data_struct_type,
@@ -308,7 +323,6 @@ fn build_public_interface(
     let macros = &call_function.macros;
     let visibility = &call_function.visibility;
     let arg = &call_function.batched_arg;
-    let arg_name: TokenStream = syn::parse_str(&call_function.batched_arg_name).unwrap();
     let arg_type = &call_function.batched_arg_type;
     let inner_body = &call_function.inner;
     let returned = &call_function.returned.tokens;
@@ -441,7 +455,9 @@ fn build_public_interface(
     let inner_batched = &identifiers.inner_batched;
     let inner_passthrough = &identifiers.inner_passthrough;
     let public_interface = &identifiers.public_interface;
-    let public_interface_multiple = &identifiers.public_interface_multiple;
+    let public_interface_arg = &identifiers.public_interface_arg;
+    let public_interface_plural = &identifiers.public_interface_plural;
+    let public_interface_plural_arg = &identifiers.public_interface_plural_arg;
 
     #[cfg(feature = "tracing_span")]
     let tracing_span = quote! { #[tracing::instrument(skip_all)] };
@@ -477,17 +493,17 @@ fn build_public_interface(
             #passthrough
 
             #tracing_span
-            #visibility async fn #public_interface(#arg_name: #arg_type) {
-                #public_interface_multiple(vec![#arg_name]).await;
+            #visibility async fn #public_interface(#public_interface_arg: #arg_type) {
+                #public_interface_plural(vec![#public_interface_arg]).await;
             }
 
             #tracing_span
-            #visibility async fn #public_interface_multiple(#arg_name: Vec<#arg_type>) {
+            #visibility async fn #public_interface_plural(#public_interface_plural_arg: Vec<#arg_type>) {
                 let channel = &#executor_producer_channel;
                 let channel = channel.get_or_init(async || { #executor_background_fn().await }).await;
 
                 let span = ::batched::tracing::Span::current();
-                channel.send((#arg_name, span, None)).await
+                channel.send((#public_interface_plural_arg, span, None)).await
                     .expect("[batched] failed to batch to executor");
             }
         }
@@ -497,20 +513,20 @@ fn build_public_interface(
             #passthrough
 
             #tracing_span
-            #visibility async fn #public_interface(#arg_name: #arg_type) -> #return_type {
-                let mut result = #public_interface_multiple(vec![#arg_name]).await;
+            #visibility async fn #public_interface(#public_interface_arg: #arg_type) -> #return_type {
+                let mut result = #public_interface_plural(vec![#public_interface_arg]).await;
                 #return_single_result
             }
 
             #tracing_span
-            #visibility async fn #public_interface_multiple(#arg_name: Vec<#arg_type>) -> #return_type_multiple {
+            #visibility async fn #public_interface_plural(#public_interface_plural_arg: Vec<#arg_type>) -> #return_type_multiple {
                 let channel = &#executor_producer_channel;
                 let channel = channel.get_or_init(async || { #executor_background_fn().await }).await;
-                let count = #arg_name.len();
+                let count = #public_interface_plural_arg.len();
 
                 let (response_channel_sender, mut response_channel_recv) = ::tokio::sync::mpsc::channel(1);
                 let span = ::batched::tracing::Span::current();
-                channel.send((#arg_name, span, Some(response_channel_sender))).await
+                channel.send((#public_interface_plural_arg, span, Some(response_channel_sender))).await
                     .expect("[batched] failed to batch to executor");
 
                 #handle_batch_result

@@ -13,10 +13,10 @@ async fn simple() {
     }
 
     for _ in 0..99 {
-        tokio::task::spawn(async move { add_multiple(vec![1, 1, 1]).await });
+        tokio::task::spawn(async move { adds(vec![1, 1, 1]).await });
     }
 
-    let total = add_multiple(vec![1, 1, 1]).await;
+    let total = adds(vec![1, 1, 1]).await;
     let expected_total = 100 * 3;
     assert_eq!(total, expected_total);
 }
@@ -39,7 +39,7 @@ async fn empty_batch() {
         numbers.iter().sum()
     }
 
-    let timeout = tokio::time::timeout(Duration::from_secs(1), add_multiple(vec![])).await;
+    let timeout = tokio::time::timeout(Duration::from_secs(1), adds(vec![])).await;
     timeout.expect("batch timed out");
 }
 
@@ -83,7 +83,8 @@ async fn window() {
     }
 
     let start = Instant::now();
-    add_multiple(vec![1, 1]).await;
+    adds(vec![1, 1]).await;
+
     let elapsed = start.elapsed();
     println!("{elapsed:?}");
     assert!(elapsed.as_secs() == 1);
@@ -96,7 +97,7 @@ async fn returned_iterator() {
         numbers.into_iter().map(|n| n + 1).collect()
     }
 
-    let result = add_each_multiple(vec![1, 1, 1]).await;
+    let result = add_eaches(vec![1, 1, 1]).await;
     assert!(result == vec![2, 2, 2]);
 
     let result = add_each(2).await;
@@ -110,7 +111,7 @@ async fn returned_iterator_with_error() {
         Ok(numbers.into_iter().map(|n| n + 1).collect())
     }
 
-    let result = add_each_multiple(vec![1, 1, 1]).await.unwrap();
+    let result = add_eaches(vec![1, 1, 1]).await.unwrap();
     assert!(result == vec![2, 2, 2]);
 
     let result = add_each(2).await.unwrap();
@@ -131,7 +132,7 @@ async fn partition_resolver() {
         (0..(numbers.len())).map(|_| round_down).collect()
     }
 
-    let result = round_down_multiple(vec![10, 15, 25, 27, 30, 31]).await;
+    let result = round_downs(vec![10, 15, 25, 27, 30, 31]).await;
     assert_eq!(result, vec![1, 1, 2, 2, 3, 3]);
 }
 
@@ -149,6 +150,6 @@ async fn async_partition_ressolver() {
         (0..(numbers.len())).map(|_| round_down).collect()
     }
 
-    let result = round_down_multiple(vec![10, 15, 25, 27, 30, 31]).await;
+    let result = round_downs(vec![10, 15, 25, 27, 30, 31]).await;
     assert_eq!(result, vec![1, 1, 2, 2, 3, 3]);
 }

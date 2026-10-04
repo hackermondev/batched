@@ -70,7 +70,7 @@ impl A {
 
 ## Tracing
 ### [`tracing_span`]
-This feature automatically adds tracing spans to call functions for batched requests (`x`, `x_multiple`).
+This feature automatically adds tracing spans to call functions for batched requests.
 
 ### [`tracing_opentelemetry`]
 This feature adds support for linking spans from callers to the inner batched call when using OpenTelemetry. Depending on whether your OpenTelemetry client supports it, you should be able to see the linked span to the batched call. 
@@ -101,7 +101,7 @@ async fn main() {
 ```rust
 use batched::{batched, error::SharedError};
 
-// `batched` macro creates functions [`insert_message`] and [`insert_message_multiple`]
+// `batched` macro creates functions [`insert_message`] and [`insert_messages`]
 #[batched(window = 100, limit = 100_000)]
 async fn insert_message(messages: Vec<String>) -> Result<(), SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
@@ -117,7 +117,7 @@ async fn service(message: String) -> Result<(), anyhow::Error> {
 
 #[post("/bulk_messages")]
 async fn service(messages: Vec<String>) -> Result<(), anyhow::Error> {
-    insert_message_multiple(messages).await?;
+    insert_messages(messages).await?;
     Ok(())
 }
 ```
@@ -132,9 +132,9 @@ struct Row {
     pub content: String,
 }
 
-// `batched` macro creates functions [`insert_message`] and [`insert_message_multiple`]
+// `batched` macro creates functions [`insert_message`] and [`insert_messages`]
 #[batched(window = 100, limit = 100_000)]
-async fn insert_message_batched(messages: Vec<String>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
+async fn insert_message(messages: Vec<String>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
     let pool = PgPool::connect("postgres://user:password@localhost/dbname").await?;
     let mut query = String::from("INSERT INTO messages (content) VALUES ");
     ...
@@ -149,7 +149,7 @@ async fn service(message: String) -> Result<(), anyhow::Error> {
 
 #[post("/bulk_messages")]
 async fn service(messages: Vec<String>) -> Result<(), anyhow::Error> {
-    let insert_messages_result: Result<Vec<Row>, SharedError<anyhow::Error>> = insert_message_multiple(messages).await;
+    let insert_messages_result: Result<Vec<Row>, SharedError<anyhow::Error>> = insert_messages(messages).await;
     let messages: Vec<Row> = insert_messages_result?;
     Ok(())
 }
@@ -171,9 +171,9 @@ struct Row {
     pub content: String,
 }
 
-// `batched` macro creates functions [`insert_message`] and [`insert_message_multiple`]
+// `batched` macro creates functions [`insert_message`] and [`insert_messages`]
 #[batched(window = 100, limit = 100_000, partition = |message| message.channel_id % 10)]
-async fn insert_message_batched(messages: Vec<Message>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
+async fn insert_messages(messages: Vec<Message>) -> Result<Vec<Row>, SharedError<anyhow::Error>> {
     let first_message_ref = messages.get(0).unwrap();
     let database_partition = first_message_ref.channel_id % 10;
     
@@ -192,7 +192,7 @@ async fn service(message: Message) -> Result<(), anyhow::Error> {
 
 #[post("/bulk_messages")]
 async fn service(messages: Vec<Message>) -> Result<(), anyhow::Error> {
-    let insert_messages_result: Result<Vec<Row>, SharedError<anyhow::Error>> = insert_message_multiple(messages).await;
+    let insert_messages_result: Result<Vec<Row>, SharedError<anyhow::Error>> = insert_messages(messages).await;
     let messages: Vec<Row> = insert_messages_result?;
     Ok(())
 }
