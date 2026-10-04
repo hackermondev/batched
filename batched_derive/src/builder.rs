@@ -28,7 +28,7 @@ fn build_identifiers(call_function: &Function) -> Identifiers {
 
     let arg_name = &call_function.batched_arg_name;
 
-    let public_interface = format_ident!("{id}");
+    let public_interface = format_ident!("{}", singular::<_, String>(id));
     let public_interface_arg = format_ident!("{}", singular::<_, String>(arg_name));
 
     let public_interface_plural = format_ident!("{}", plural::<_, String>(id));
@@ -355,6 +355,11 @@ fn build_public_interface(
             }
         }
     };
+
+    let return_empty_batch_result = if is_result {
+        quote! { return Ok(Default::default()) }
+    } else { quote!{ return Default::default() }};
+
     let resolve_batch_result = if is_result {
         quote! {
             let result = result?;
@@ -499,6 +504,10 @@ fn build_public_interface(
 
             #tracing_span
             #visibility async fn #public_interface_plural(#public_interface_plural_arg: Vec<#arg_type>) {
+                if #public_interface_plural_arg.is_empty() {
+                    return;
+                }
+
                 let channel = &#executor_producer_channel;
                 let channel = channel.get_or_init(async || { #executor_background_fn().await }).await;
 
@@ -520,6 +529,10 @@ fn build_public_interface(
 
             #tracing_span
             #visibility async fn #public_interface_plural(#public_interface_plural_arg: Vec<#arg_type>) -> #return_type_multiple {
+                if #public_interface_plural_arg.is_empty() {
+                    #return_empty_batch_result
+                }
+
                 let channel = &#executor_producer_channel;
                 let channel = channel.get_or_init(async || { #executor_background_fn().await }).await;
                 let count = #public_interface_plural_arg.len();
